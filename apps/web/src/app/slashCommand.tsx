@@ -13,8 +13,12 @@ import {
 import { createSuggestionItems } from "novel";
 import { Command, renderItems } from "novel";
 
-
 // ------- Slash Commands -------
+
+const mcqContent = {
+  type: "questionBlock",
+  content: [{ type: "questionTitle" }, { type: "optionItem" }],
+};
 
 export const suggestionItems = createSuggestionItems([
   {
@@ -136,29 +140,14 @@ export const suggestionItems = createSuggestionItems([
     searchTerms: ["question", "options", "mcq", "poll", "quiz"],
     icon: <CheckSquare size={18} />,
     command: ({ editor, range }) => {
-      const from = range.from;
       editor
         .chain()
         .focus()
-        .deleteRange(range)
-        .insertContent({
-          type: "questionBlock",
-          content: [
-            { type: "questionTitle" },
-            { type: "optionItem" },
-          ],
-        })
+        .insertContentAt(range, mcqContent)
+        // The inserted structure is `questionBlock -> questionTitle`, so
+        // `range.from + 2` lands the caret inside the title immediately.
+        .setTextSelection(range.from + 2)
         .run();
-
-      // Move cursor into the questionTitle (not the option)
-      let found = false;
-      editor.state.doc.descendants((node, pos) => {
-        if (!found && node.type.name === "questionTitle" && pos >= from - 2) {
-          editor.commands.setTextSelection(pos + 1);
-          found = true;
-          return false;
-        }
-      });
     },
   },
 ]);

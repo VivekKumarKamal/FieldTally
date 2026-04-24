@@ -1,5 +1,35 @@
 import { Node, mergeAttributes } from "@tiptap/core";
+import type { Node as ProseMirrorNode, ResolvedPos } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
+
+// The custom question nodes can be nested at different depths depending on the
+// current selection, so keyboard handlers walk up the ancestor chain instead of
+// assuming a fixed structure around the cursor.
+const findAncestorDepth = (
+  $from: ResolvedPos,
+  nodeName: string,
+  minDepth = 0,
+) => {
+  for (let depth = $from.depth; depth >= minDepth; depth--) {
+    if ($from.node(depth).type.name === nodeName) {
+      return depth;
+    }
+  }
+
+  return -1;
+};
+
+const countOptionItems = (questionBlock: ProseMirrorNode) => {
+  let optionCount = 0;
+
+  questionBlock.forEach((child) => {
+    if (child.type.name === "optionItem") {
+      optionCount++;
+    }
+  });
+
+  return optionCount;
+};
 
 // ── QuestionTitle: Enter moves to first option ──
 export const QuestionTitle = Node.create({
@@ -25,13 +55,7 @@ export const QuestionTitle = Node.create({
         const { $from } = this.editor.state.selection;
         if ($from.parent.type.name !== "questionTitle") return false;
 
-        let qbDepth = -1;
-        for (let d = $from.depth; d >= 0; d--) {
-          if ($from.node(d).type.name === "questionBlock") {
-            qbDepth = d;
-            break;
-          }
-        }
+        const qbDepth = findAncestorDepth($from, "questionBlock");
         if (qbDepth === -1) return false;
 
         const qb = $from.node(qbDepth);
@@ -76,13 +100,7 @@ export const OptionItem = Node.create({
         const { state } = this.editor;
         const { $from } = state.selection;
 
-        let optionDepth = -1;
-        for (let d = $from.depth; d > 0; d--) {
-          if ($from.node(d).type.name === "optionItem") {
-            optionDepth = d;
-            break;
-          }
-        }
+        const optionDepth = findAncestorDepth($from, "optionItem", 1);
         if (optionDepth === -1) return false;
 
         const optionNode = $from.node(optionDepth);
@@ -98,15 +116,13 @@ export const OptionItem = Node.create({
 
         // Option is empty → exit the question block
         const questionBlock = $from.node(optionDepth - 1);
-        let optionCount = 0;
-        questionBlock.forEach((child) => {
-          if (child.type.name === "optionItem") optionCount++;
-        });
+        const optionCount = countOptionItems(questionBlock);
 
         const tr = state.tr;
 
         if (optionCount > 1) {
-          // Delete empty option, then add paragraph after block
+          // Remove the blank option before exiting so the block does not retain
+          // a trailing empty child after the caret moves out of it.
           const optFrom = $from.before(optionDepth);
           const optTo = $from.after(optionDepth);
           const qbAfter = $from.after(optionDepth - 1);
@@ -130,22 +146,13 @@ export const OptionItem = Node.create({
         const { $from, empty } = state.selection;
         if (!empty || $from.parentOffset !== 0) return false;
 
-        let optionDepth = -1;
-        for (let d = $from.depth; d > 0; d--) {
-          if ($from.node(d).type.name === "optionItem") {
-            optionDepth = d;
-            break;
-          }
-        }
+        const optionDepth = findAncestorDepth($from, "optionItem", 1);
         if (optionDepth === -1) return false;
 
         const optionNode = $from.node(optionDepth);
         const questionBlock = $from.node(optionDepth - 1);
 
-        let optionCount = 0;
-        questionBlock.forEach((child) => {
-          if (child.type.name === "optionItem") optionCount++;
-        });
+        const optionCount = countOptionItems(questionBlock);
 
         if (optionNode.textContent === "" && optionCount > 1) {
           const from = $from.before(optionDepth);
@@ -157,6 +164,8 @@ export const OptionItem = Node.create({
         if (optionNode.textContent === "" && optionCount === 1) {
           const title = questionBlock.firstChild;
           if (title && title.textContent === "") {
+            // Once both the title and the last option are empty, collapse the
+            // custom block back to a normal paragraph so Backspace feels native.
             const qbStart = $from.before(optionDepth - 1);
             const qbEnd = $from.after(optionDepth - 1);
             const tr = state.tr.replaceWith(

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   EditorRoot,
   EditorContent,
@@ -10,6 +11,8 @@ import {
   EditorCommandItem,
   SuggestionItem,
 } from "novel";
+import type { Editor as TiptapEditor } from "@tiptap/core";
+import { Selection } from "@tiptap/pm/state";
 
 import { defaultExtensions } from "./extension";
 import { slashCommand, suggestionItems } from "./slashCommand";
@@ -31,26 +34,96 @@ export default function Home() {
   // producing a new `defaultExtensions` array reference. We detect that and
   // increment editorKey to force TipTap to fully remount with the new config.
   const [editorKey, setEditorKey] = useState(0);
+  const [extensions, setExtensions] = useState(() => [
+    ...defaultExtensions,
+    slashCommand,
+  ]);
   const prevExtensionsRef = useRef(defaultExtensions);
+  const editorRef = useRef<TiptapEditor | null>(null);
+  const lastSelectionRef = useRef(1);
 
   useEffect(() => {
     if (prevExtensionsRef.current !== defaultExtensions) {
       prevExtensionsRef.current = defaultExtensions;
+      // Keep the extension list stable between renders so typing and selection
+      // changes do not hand the editor a fresh array every time.
+      setExtensions([...defaultExtensions, slashCommand]);
       setEditorKey((k) => k + 1);
     }
   }); // intentionally no deps — runs after every render to catch HMR updates
 
-  const extensions = [...defaultExtensions, slashCommand];
+  const syncEditorSelection = (editor: TiptapEditor) => {
+    editorRef.current = editor;
+    lastSelectionRef.current = editor.state.selection.from;
+  };
+
+  const focusNearestBlock = (clientX: number, clientY: number) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const editorDom = editor.view.dom as HTMLElement;
+    const rect = editorDom.getBoundingClientRect();
+    const fallbackPos = Math.max(
+      1,
+      Math.min(lastSelectionRef.current, editor.state.doc.content.size),
+    );
+
+    if (rect.width === 0 || rect.height === 0) {
+      editor.commands.focus(fallbackPos);
+      return;
+    }
+
+    // Clamp the probe point so clicks in the empty page gutter still resolve to
+    // a real document position near the editor rather than outside its bounds.
+    const probeX = Math.min(Math.max(clientX, rect.left + 8), rect.right - 8);
+    const probeY = Math.min(Math.max(clientY, rect.top + 4), rect.bottom - 4);
+    const resolvedPos =
+      editor.view.posAtCoords({ left: probeX, top: probeY })?.pos ?? fallbackPos;
+    const selection = Selection.near(editor.state.doc.resolve(resolvedPos), -1);
+
+    editor.view.dispatch(editor.state.tr.setSelection(selection).scrollIntoView());
+    editor.view.focus();
+    lastSelectionRef.current = selection.from;
+  };
+
+  const handleEmptyPagePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const rawTarget = event.target;
+    const target =
+      rawTarget instanceof HTMLElement
+        ? rawTarget
+        : rawTarget instanceof Node
+          ? rawTarget.parentElement
+          : null;
+
+    if (!target) return;
+    if (target.closest("#slash-command")) return;
+    if (target.closest("button, a, input, textarea, select, [role='button']")) return;
+
+    const editorDom = editor.view.dom as HTMLElement;
+    const clickedInsideEditor = editorDom.contains(target);
+
+    if (clickedInsideEditor && target !== editorDom) return;
+
+    event.preventDefault();
+    focusNearestBlock(event.clientX, event.clientY);
+  };
 
   return (
-    <div className="px-12 py-36 w-screen">
-      
+    <div
+      className="px-12 py-36 w-screen"
+      onPointerDownCapture={handleEmptyPagePointerDown}
+    >
       <EditorRoot>
         <EditorContent
           key={editorKey}
           initialContent={initialContent}
           extensions={extensions}
-          
+          onCreate={({ editor }) => syncEditorSelection(editor)}
+          onSelectionUpdate={({ editor }) => syncEditorSelection(editor)}
+
           // onUpdate={({ editor }) => {
           //   const json = editor.getJSON();
           //   console.log(json)
