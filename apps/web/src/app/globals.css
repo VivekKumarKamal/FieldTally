@@ -1,0 +1,173 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #232323;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.is-empty:not(:has(.is-empty))::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: #adb5bd;
+  pointer-events: none;
+}
+
+.tiptap:focus {
+  outline: none;
+}
+
+.tiptap h1 {
+  font-size: 2em;
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0.75em 0 0.25em;
+}
+
+.tiptap h2 {
+  font-size: 1.5em;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 0.6em 0 0.2em;
+}
+
+.tiptap h3 {
+  font-size: 1.25em;
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 0.5em 0 0.15em;
+}
+
+.tiptap blockquote {
+  border-left: 4px solid;
+  padding-left: 1rem;
+  margin: 0.5rem 0;
+}
+
+.tiptap ol {
+  margin-left: 25px;
+  margin-top: 5px;
+}
+
+.tiptap ul {
+  margin-left: 25px;
+  margin-top: 5px;
+}
+
+
+.tiptap ol li {
+  padding-left: 5px;
+}
+
+.tiptap ul li {
+  padding-left: 5px;
+}
+
+.prose {
+  max-width: none !important;
+}
+
+/* ---- Task List / Checkbox ---- */
+.tiptap ul[data-type="taskList"] {
+  list-style: none;
+  margin-left: 0;
+  padding-left: 0;
+}
+
+.tiptap ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 0 0;
+}
+
+.tiptap ul[data-type="taskList"] li label {
+  display: flex;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.tiptap ul[data-type="taskList"] li label input[type="checkbox"] {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #c4c4c4;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.tiptap ul[data-type="taskList"] li label input[type="checkbox"]:checked {
+  background-color: #232323;
+  border-color: #232323;
+}
+
+.tiptap ul[data-type="taskList"] li label input[type="checkbox"]:checked::after {
+  content: "✓";
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  width: 100%;
+  height: 100%;
+}
+
+/* Strikethrough checked items */
+.tiptap ul[data-type="taskList"] li[data-checked="true"] > div > p {
+  text-decoration: line-through;
+  color: #adb5bd;
+}
+
+/* ---- Question Block ---- */
+.tiptap div[data-type="question-block"] {
+  margin: 20px 0;
+  counter-reset: option-counter;
+}
+
+.tiptap div[data-type="question-title"] {
+  font-weight: 600;
+  font-size: 1.15em;
+}
+
+.tiptap div[data-type="option-item"] {
+  display: flex;
+  align-items: center;
+  padding: 4px 12px;
+  counter-increment: option-counter;
+}
+
+.tiptap div[data-type="option-item"] .option-marker {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  margin-right: 10px;
+  cursor: pointer;
+}
+
+.tiptap div[data-type="option-item"] .option-content {
+  flex: 1;
+  outline: none;
+}
+
+/* Suppress the Placeholder extension's ::before on option-items (breaks flex) */
+.tiptap div[data-type="option-item"].is-empty::before {
+  content: none !important;
+}
+
+/* Show numbered placeholder inside the option-content area when option is empty */
+.tiptap div[data-type="option-item"].is-empty .option-content::before {
+  content: "Option " counter(option-counter);
+  color: #adb5bd;
+  pointer-events: none;
+}
