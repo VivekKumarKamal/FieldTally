@@ -7,10 +7,77 @@ import {
   HorizontalRule,
   StarterKit,
   Placeholder,
+  GlobalDragHandle,
 } from "novel";
 
+import { Extension } from "@tiptap/core";
+import Underline from "@tiptap/extension-underline";
 import { cx } from "class-variance-authority";
-import { QuestionBlock, QuestionTitle, OptionItem } from "./extensions/questionBlock";
+import { CheckboxBlock, CheckboxTitle, CheckboxOption } from "./extensions/checkboxes";
+import { MultipleChoiceBlock, MultipleChoiceTitle, MultipleChoiceOption } from "./extensions/multipleChoice";
+import { ShortAnswerBlock } from "./extensions/shortAnswer";
+import { NumberAnswerBlock } from "./extensions/numberAnswer";
+import { EmailAnswerBlock } from "./extensions/emailAnswer";
+import { PhoneAnswerBlock } from "./extensions/phoneAnswer";
+import { LinkAnswerBlock } from "./extensions/linkAnswer";
+import { DateAnswerBlock } from "./extensions/dateAnswer";
+import { TimeAnswerBlock } from "./extensions/timeAnswer";
+import { LongAnswerBlock } from "./extensions/longAnswer";
+import { LogicBlock } from "./extensions/logicBlock";
+import UniqueId from "@tiptap/extension-unique-id";
+
+export const RequiredAttribute = Extension.create({
+  name: "requiredAttribute",
+  addGlobalAttributes() {
+    return [
+      {
+        types: [
+          "shortAnswerBlock", 
+          "numberAnswerBlock", 
+          "emailAnswerBlock", 
+          "phoneAnswerBlock", 
+          "linkAnswerBlock", 
+          "dateAnswerBlock", 
+          "timeAnswerBlock",
+          "checkboxBlock",
+          "multipleChoiceBlock",
+          "longAnswerBlock"
+        ],
+        attributes: {
+          required: {
+            default: true,
+            renderHTML: attributes => {
+              return { "data-required": attributes.required ? "true" : "false" };
+            },
+            parseHTML: element => element.getAttribute("data-required") !== "false",
+          },
+          logic: {
+            default: [],
+            renderHTML: attributes => ({ "data-logic": JSON.stringify(attributes.logic || []) }),
+            parseHTML: element => JSON.parse(element.getAttribute("data-logic") || "[]"),
+          },
+          id: {
+            default: null,
+            renderHTML: attributes => {
+              if (!attributes.id) return {};
+              return { "data-id": attributes.id };
+            },
+            parseHTML: element => element.getAttribute("data-id"),
+          }
+        },
+      },
+    ];
+  },
+});
+
+const dragHandle = GlobalDragHandle.configure({
+  dragHandleSelector: ".custom-drag-handle",
+  // dragHandleWidth controls: (1) node detection X offset (clientX + 50 + width),
+  // (2) handle left position (blockLeft - width). Keep it small so detection
+  // doesn't overshoot into the wrong block.
+  dragHandleWidth: 100,
+  customNodes: ["checkbox-block", "multiple-choice-block", "short-answer-block", "number-answer-block", "email-answer-block", "phone-answer-block", "link-answer-block", "date-answer-block", "time-answer-block", "long-answer-block", "logic-block"],
+});
 
 // TODO I am using cx here to get tailwind autocomplete working, idk if someone else can write a regex to just capture the class key in objects
 
@@ -25,8 +92,18 @@ const placeholder = Placeholder.configure({
     if (node.type.name === "codeBlock") {
       return "Write some code...";
     }
-    if (node.type.name === "questionTitle") return "Type your question...";
-    if (node.type.name === "optionItem") return ""; // CSS handles this
+    if (node.type.name === "checkboxTitle") return "Type your question...";
+    if (node.type.name === "checkboxOption") return ""; // CSS handles this
+    if (node.type.name === "multipleChoiceTitle") return "Type your question...";
+    if (node.type.name === "multipleChoiceOption") return ""; // CSS handles this
+    if (node.type.name === "shortAnswerBlock") return "Type your question...";
+    if (node.type.name === "numberAnswerBlock") return "Type your question...";
+    if (node.type.name === "emailAnswerBlock") return "Type your question...";
+    if (node.type.name === "phoneAnswerBlock") return "Type your question...";
+    if (node.type.name === "linkAnswerBlock") return "Type your question...";
+    if (node.type.name === "dateAnswerBlock") return "Type your question...";
+    if (node.type.name === "timeAnswerBlock") return "Type your question...";
+    if (node.type.name === "longAnswerBlock") return "Type your question...";
 
     // Check parent context for lists/quotes
     const $pos = editor.state.doc.resolve(pos);
@@ -110,7 +187,38 @@ const starterKit = StarterKit.configure({
   gapcursor: false,
 });
 
+export const UniqueIdExtension = UniqueId.configure({
+  types: [
+    "shortAnswerBlock", "longAnswerBlock", "numberAnswerBlock",
+    "emailAnswerBlock", "phoneAnswerBlock", "linkAnswerBlock",
+    "dateAnswerBlock", "timeAnswerBlock", "checkboxBlock",
+    "multipleChoiceBlock"
+  ],
+  generateID: () => crypto.randomUUID(),
+  filterTransaction: transaction => !transaction.meta?.yjs,
+});
+
 export const defaultExtensions = [
+  UniqueIdExtension,
+  // Custom blocks must be registered BEFORE starterKit so their Enter/Backspace
+  // shortcuts take precedence over the default splitBlock/lift behaviors.
+  CheckboxBlock,
+  CheckboxTitle,
+  CheckboxOption,
+  MultipleChoiceBlock,
+  MultipleChoiceTitle,
+  MultipleChoiceOption,
+  ShortAnswerBlock,
+  NumberAnswerBlock,
+  EmailAnswerBlock,
+  PhoneAnswerBlock,
+  LinkAnswerBlock,
+  DateAnswerBlock,
+  TimeAnswerBlock,
+  LongAnswerBlock,
+  LogicBlock,
+  RequiredAttribute,
+  dragHandle,
   starterKit,
   placeholder,
   tiptapLink,
@@ -119,7 +227,5 @@ export const defaultExtensions = [
   taskList,
   taskItem,
   horizontalRule,
-  QuestionBlock,
-  QuestionTitle,
-  OptionItem,
+  Underline,
 ];

@@ -9,6 +9,7 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  padding-left: 64px;
 }
 
 .is-empty:not(:has(.is-empty))::before {
@@ -127,25 +128,19 @@ body {
   color: #adb5bd;
 }
 
-/* ---- Question Block ---- */
-.tiptap div[data-type="question-block"] {
-  margin: 20px 0;
+/* ---- Checkbox Block ---- */
+.tiptap div[data-type="checkbox-block"] {
   counter-reset: option-counter;
 }
 
-.tiptap div[data-type="question-title"] {
-  font-weight: 600;
-  font-size: 1.15em;
-}
-
-.tiptap div[data-type="option-item"] {
+.tiptap div[data-type="checkbox-option"] {
   display: flex;
   align-items: center;
   padding: 4px 12px;
   counter-increment: option-counter;
 }
 
-.tiptap div[data-type="option-item"] .option-marker {
+.tiptap div[data-type="checkbox-option"] .option-marker {
   flex-shrink: 0;
   width: 18px;
   height: 18px;
@@ -155,19 +150,419 @@ body {
   cursor: pointer;
 }
 
-.tiptap div[data-type="option-item"] .option-content {
+.tiptap div[data-type="checkbox-option"] .option-content {
   flex: 1;
   outline: none;
 }
 
-/* Suppress the Placeholder extension's ::before on option-items (breaks flex) */
-.tiptap div[data-type="option-item"].is-empty::before {
+/* Suppress the Placeholder extension's ::before on checkbox-options (breaks flex) */
+.tiptap div[data-type="checkbox-option"].is-empty::before {
   content: none !important;
 }
 
 /* Show numbered placeholder inside the option-content area when option is empty */
-.tiptap div[data-type="option-item"].is-empty .option-content::before {
+.tiptap div[data-type="checkbox-option"].is-empty .option-content::before {
   content: "Option " counter(option-counter);
   color: #adb5bd;
   pointer-events: none;
+  float: left;
+  height: 0;
+}
+
+/* ---- Multiple Choice Block ---- */
+.tiptap div[data-type="multiple-choice-block"] {
+  counter-reset: option-counter;
+}
+
+.tiptap div[data-type="multiple-choice-option"] {
+  display: flex;
+  align-items: center;
+  padding: 4px 12px;
+  counter-increment: option-counter;
+}
+
+.tiptap div[data-type="multiple-choice-option"] .option-marker {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border: 1px solid #ccc;
+  border-radius: 50%; /* Radio button style */
+  margin-right: 10px;
+  cursor: pointer;
+}
+
+.tiptap div[data-type="multiple-choice-option"] .option-content {
+  flex: 1;
+  outline: none;
+}
+
+/* Suppress the Placeholder extension's ::before on multiple-choice-options (breaks flex) */
+.tiptap div[data-type="multiple-choice-option"].is-empty::before {
+  content: none !important;
+}
+
+/* Show numbered placeholder inside the option-content area when option is empty */
+.tiptap div[data-type="multiple-choice-option"].is-empty .option-content::before {
+  content: "Option " counter(option-counter);
+  color: #adb5bd;
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+
+/* ═══════════════════════════════════════════════════════
+   ──  QUESTION BLOCK DESIGN TOKENS  ──────────────────
+   Edit these two rules to restyle ALL question blocks
+   at once — spacing, title size, etc.
+   ═══════════════════════════════════════════════════════ */
+
+/* Outer block spacing — applies to every question type */
+.tiptap .short-answer-block,
+.tiptap .long-answer-block,
+.tiptap .number-answer-block,
+.tiptap .email-answer-block,
+.tiptap .phone-answer-block,
+.tiptap .link-answer-block,
+.tiptap .date-answer-block,
+.tiptap .time-answer-block,
+.tiptap div[data-type="checkbox-block"],
+.tiptap div[data-type="multiple-choice-block"] {
+  margin: 28px 0;
+}
+
+/* Question title typography — applies to every question type */
+.tiptap .short-answer-title,
+.tiptap .long-answer-title,
+.tiptap .number-answer-title,
+.tiptap .email-answer-title,
+.tiptap .phone-answer-title,
+.tiptap .link-answer-title,
+.tiptap .date-answer-title,
+.tiptap .time-answer-title,
+.tiptap div[data-type="checkbox-title"],
+.tiptap div[data-type="multiple-choice-title"] {
+  font-size: 1.1em;
+}
+
+
+.tiptap .block-placeholder-input {
+  display: block;
+  width: 100%;
+  border: none;
+  border-bottom: 1.5px solid #d1d5db;
+  outline: none;
+  padding: 4px 0;
+  font-size: 0.9em;
+  /* Typed text is always dim — signals it's a placeholder, not real content */
+  color: #adb5bd;
+  background: transparent;
+  cursor: text;
+  caret-color: #3b82f6;
+  font-family: inherit;
+}
+
+/* Placeholder hint text hidden by default */
+.tiptap .block-placeholder-input::placeholder {
+  color: transparent;
+  transition: color 0.15s ease;
+}
+
+/* Show the hint only when the user moves their cursor to the field */
+.tiptap .block-placeholder-input:focus::placeholder {
+  color: #d1d5db;
+}
+
+/* Link field keeps the https:// prefix inline */
+.tiptap .link-answer-field {
+  display: flex;
+  align-items: center;
+  border-bottom: 1.5px solid #d1d5db;
+  padding: 2px 0;
+  gap: 2px;
+}
+
+.tiptap .link-answer-field .block-placeholder-input {
+  border-bottom: none;
+  padding: 0;
+}
+
+/* ─── Long Answer Block ─── */
+.tiptap .long-answer-field-wrapper {
+  position: relative;
+}
+
+.tiptap .long-answer-textarea {
+  display: block;
+  width: 100%;
+  resize: none; /* Disable native resize — we use a custom handle */
+  border: 1px solid #e4e4e7;
+  border-radius: 6px;
+  padding: 8px 10px;
+  overflow-y: auto;
+  font-family: inherit;
+  font-size: 0.9em;
+  color: #adb5bd;
+  background: transparent;
+  caret-color: #3b82f6;
+  outline: none;
+  line-height: 1.5;
+  transition: border-color 0.15s ease;
+}
+
+.tiptap .long-answer-textarea:focus {
+  border-color: #a1a1aa;
+}
+
+/* Custom resize handle — three horizontal dots at the bottom centre */
+.tiptap .long-answer-resize-handle {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 0 2px;
+  cursor: ns-resize;
+  user-select: none;
+}
+
+.tiptap .long-answer-resize-handle span {
+  width: 20px;
+  height: 3px;
+  border-radius: 2px;
+  background: #d4d4d8;
+  transition: background 0.15s ease;
+}
+
+.tiptap .long-answer-resize-handle:hover span {
+  background: #a1a1aa;
+}
+
+/* ─── Logic Visual Feedback ─── */
+.tiptap div[data-logic]:not([data-logic="[]"]):not([data-logic="null"]) {
+  position: relative;
+}
+.tiptap div[data-logic]:not([data-logic="[]"]):not([data-logic="null"])::after {
+  content: "⚡";
+  position: absolute;
+  top: -8px;
+  right: -24px;
+  font-size: 14px;
+  color: #a855f7;
+  pointer-events: none;
+  opacity: 0.8;
+}
+
+.tiptap div.logic-dimmed {
+  opacity: 0.4;
+  transition: opacity 0.2s ease;
+}
+.tiptap div.logic-dimmed:hover {
+  opacity: 1;
+}
+
+/* ─── Required Asterisk ─── */
+
+/* Flex row that places the title and asterisk badge side by side */
+.tiptap .question-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The title should take up available space but not push the badge off */
+.tiptap .question-title-row > [class$="-title"] {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ─── Shared Required Badge Styles ─── */
+/* Edit this block to change the look of the asterisk across all question types */
+.tiptap .required-badge,
+.tiptap [data-required="true"] div[data-type="checkbox-title"]::after,
+.tiptap [data-required="true"] div[data-type="multiple-choice-title"]::after {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background-color: #f4f4f5;
+  color: #3f3f46;
+  border-radius: 50%;
+  font-size: 18px;
+  font-weight: 700;
+  
+  /* These properties are required to visually center the asterisk */
+  line-height: 1;
+  padding-top: 7px; /* Pushes the superscript asterisk down to visual center */
+  
+  /* Protect the circle shape */
+  user-select: none;
+  flex-shrink: 0;
+}
+
+/* React specific styles (hover & layout) */
+.tiptap .required-badge {
+  cursor: pointer;
+  transition: all 0.15s ease;
+  pointer-events: auto !important; /* Forces Tiptap to allow clicks/hovers on this non-editable element */
+}
+
+.tiptap .required-badge:hover {
+  background-color: #e8e8e8;
+}
+
+/* ProseMirror non-React specific styles */
+.tiptap [data-required="true"] div[data-type="checkbox-title"]::after,
+.tiptap [data-required="true"] div[data-type="multiple-choice-title"]::after {
+  content: "*";
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+/* Hide <br> inside empty checkbox/multipleChoice titles so ::after stays inline */
+.tiptap [data-required="true"] div[data-type="checkbox-title"].is-empty br,
+.tiptap [data-required="true"] div[data-type="multiple-choice-title"].is-empty br {
+  display: none;
+}
+
+/* Prevent the title from vertically collapsing when the <br> is hidden */
+.tiptap div[data-type="checkbox-title"].is-empty,
+.tiptap div[data-type="multiple-choice-title"].is-empty {
+  min-height: 1.5em;
+  display: block;
+}
+
+/* Freeze editor interactions when menu is open */
+.editor-menu-open .ProseMirror {
+  pointer-events: none;
+}
+
+/* Custom Drag Handle */
+.custom-drag-handle {
+  transition: opacity 0.15s ease-in-out;
+}
+
+.custom-drag-handle[data-menu-open="true"] {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+
+/* ─── Drag Highlight ───
+   GlobalDragHandle adds .dragging to .ProseMirror during drag.
+   TipTap adds .ProseMirror-selectednode to the node being moved.
+   Combined selector styles only the actively dragged block. */
+.ProseMirror.dragging .ProseMirror-selectednode {
+  background: #036df8;
+  border: 11.5px dashed #93c5fd;
+  border-radius: 6px;
+  opacity: 1;
+}
+
+/* ─── Form Title Input ─── */
+.form-title-input {
+  width: 100%;
+  border: none;
+  outline: none;
+  font-size: 2rem;
+  font-weight: 700;
+  color: #18181b;
+  background: transparent;
+  line-height: 1.2;
+  padding: 0;
+  caret-color: #3b82f6;
+}
+
+.form-title-input::placeholder {
+  color: #d4d4d8;
+}
+
+/* ─── Submit Button ─── */
+.submit-btn {
+  background: #232323;
+  color: #fff;
+  border: none;
+  padding: 10px 10px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.submit-btn:hover {
+  background: #444;
+}
+
+.submit-btn:active {
+  transform: scale(0.97);
+}
+
+/* ─── JSON Modal ─── */
+.json-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.json-modal {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  border-radius: 12px;
+  width: min(720px, 90vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.4);
+  overflow: hidden;
+}
+
+.json-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid #333;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #aaa;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.json-modal-close {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color 0.12s, background 0.12s;
+}
+
+.json-modal-close:hover {
+  color: #fff;
+  background: #333;
+}
+
+.json-modal-body {
+  overflow-y: auto;
+  padding: 20px;
+  font-family: "Menlo", "Monaco", "Courier New", monospace;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: #ce9178;
+  margin: 0;
+  white-space: pre;
+}
+
+/* Hide the asterisk completely when the question text is empty */
+.tiptap [class$="-title"].is-empty + .required-badge,
+.tiptap [data-required="true"] div[data-type="checkbox-title"].is-empty::after,
+.tiptap [data-required="true"] div[data-type="multiple-choice-title"].is-empty::after {
+  display: none !important;
 }
