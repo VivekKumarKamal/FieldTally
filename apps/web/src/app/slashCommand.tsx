@@ -37,16 +37,6 @@ const multipleChoiceContent = {
   content: [{ type: "multipleChoiceTitle" }, { type: "multipleChoiceOption" }],
 };
 
-// Content structure for the Short Answer block (now a single React Node View)
-const shortAnswerContent = {
-  type: "shortAnswerBlock",
-};
-
-// Content structure for the Number Answer block (now a single React Node View)
-const numberAnswerContent = {
-  type: "numberAnswerBlock",
-};
-
 export const suggestionItems = createSuggestionItems([
   {
     title: "Text",

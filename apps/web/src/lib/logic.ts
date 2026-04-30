@@ -43,6 +43,16 @@ export type EvaluateResult = {
   end: boolean;
 };
 
+function parseComparableDate(value: any): number | null {
+  if (typeof value === "string" && /^\d{2}:\d{2}$/.test(value)) {
+    const [hours, minutes] = value.split(":").map(Number);
+    return hours * 60 + minutes;
+  }
+
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : null;
+}
+
 export function evaluateCondition(cond: LogicCondition, answer: any): boolean {
   if (cond.operator === "is_empty") return answer == null || answer === "" || (Array.isArray(answer) && answer.length === 0);
   if (cond.operator === "is_not_empty") return answer != null && answer !== "" && !(Array.isArray(answer) && answer.length === 0);
@@ -67,8 +77,16 @@ export function evaluateCondition(cond: LogicCondition, answer: any): boolean {
       const num = Number(answer);
       return num >= Number(min) && num <= Number(max);
     }
-    case "before": return new Date(answer) < new Date(cond.value);
-    case "after": return new Date(answer) > new Date(cond.value);
+    case "before": {
+      const answerValue = parseComparableDate(answer);
+      const conditionValue = parseComparableDate(cond.value);
+      return answerValue != null && conditionValue != null && answerValue < conditionValue;
+    }
+    case "after": {
+      const answerValue = parseComparableDate(answer);
+      const conditionValue = parseComparableDate(cond.value);
+      return answerValue != null && conditionValue != null && answerValue > conditionValue;
+    }
     default: return false;
   }
 }

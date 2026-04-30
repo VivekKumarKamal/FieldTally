@@ -1,7 +1,7 @@
 import { Node, mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import React, { useMemo } from "react";
-import { LogicRule, LogicCondition, Operator } from "../../lib/logic";
+import { LogicRule, LogicCondition, Operator, LogicAction } from "../../lib/logic";
 import { GitBranch, Zap, Trash2, Plus, X } from "lucide-react";
 
 const OPERATORS_BY_TYPE: Record<string, Operator[]> = {
@@ -97,7 +97,7 @@ const LogicBlockComponent = (props: any) => {
       <div className="flex flex-col gap-3">
         {rule.conditions.map((cond, index) => {
           const selectedFieldBlock = blocks.find(b => b.id === cond.field);
-          const allowedOperators = selectedFieldBlock ? OPERATORS_BY_TYPE[selectedFieldBlock.node.type.name] || ["equals"] : ["equals"];
+          const allowedOperators: Operator[] = selectedFieldBlock ? OPERATORS_BY_TYPE[selectedFieldBlock.node.type.name] || ["equals"] : ["equals"];
 
           return (
             <div key={cond.id} className="flex items-center gap-3">
@@ -123,7 +123,7 @@ const LogicBlockComponent = (props: any) => {
                 onChange={(e) => {
                   const newField = e.target.value;
                   const newFieldBlock = blocks.find(b => b.id === newField);
-                  const ops = newFieldBlock ? OPERATORS_BY_TYPE[newFieldBlock.node.type.name] || ["equals"] : ["equals"];
+                  const ops: Operator[] = newFieldBlock ? OPERATORS_BY_TYPE[newFieldBlock.node.type.name] || ["equals"] : ["equals"];
                   updateCondition(cond.id, { field: newField, operator: ops[0] });
                 }}
               >
@@ -174,7 +174,7 @@ const LogicBlockComponent = (props: any) => {
         <select
           className="w-40 text-sm border border-zinc-200 rounded-md px-3 py-2 bg-white outline-none focus:border-blue-500 shadow-sm"
           value={rule.action.type}
-          onChange={(e) => updateRule({ action: { ...rule.action, type: e.target.value as any } })}
+          onChange={(e) => updateRule({ action: { ...rule.action, type: e.target.value as LogicAction["type"] } })}
         >
           <option value="show">Show blocks</option>
           <option value="hide">Hide blocks</option>
