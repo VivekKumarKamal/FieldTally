@@ -11,6 +11,7 @@ import {
 } from "novel";
 
 import { Extension } from "@tiptap/core";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
 import Underline from "@tiptap/extension-underline";
 import { cx } from "class-variance-authority";
 import { CheckboxBlock, CheckboxTitle, CheckboxOption } from "./extensions/checkboxes";
@@ -24,7 +25,20 @@ import { DateAnswerBlock } from "./extensions/dateAnswer";
 import { TimeAnswerBlock } from "./extensions/timeAnswer";
 import { LongAnswerBlock } from "./extensions/longAnswer";
 import { LogicBlock } from "./extensions/logicBlock";
-import UniqueId from "@tiptap/extension-unique-id";
+
+const ID_BLOCK_TYPES = [
+  "shortAnswerBlock",
+  "longAnswerBlock",
+  "numberAnswerBlock",
+  "emailAnswerBlock",
+  "phoneAnswerBlock",
+  "linkAnswerBlock",
+  "dateAnswerBlock",
+  "timeAnswerBlock",
+  "checkboxBlock",
+  "multipleChoiceBlock",
+  "logicBlock",
+];
 
 export const RequiredAttribute = Extension.create({
   name: "requiredAttribute",
@@ -41,7 +55,8 @@ export const RequiredAttribute = Extension.create({
           "timeAnswerBlock",
           "checkboxBlock",
           "multipleChoiceBlock",
-          "longAnswerBlock"
+          "longAnswerBlock",
+          "logicBlock",
         ],
         attributes: {
           required: {
@@ -187,15 +202,56 @@ const starterKit = StarterKit.configure({
   gapcursor: false,
 });
 
-export const UniqueIdExtension = UniqueId.configure({
-  types: [
-    "shortAnswerBlock", "longAnswerBlock", "numberAnswerBlock",
-    "emailAnswerBlock", "phoneAnswerBlock", "linkAnswerBlock",
-    "dateAnswerBlock", "timeAnswerBlock", "checkboxBlock",
-    "multipleChoiceBlock"
-  ],
-  generateID: () => crypto.randomUUID(),
-  filterTransaction: transaction => !transaction.meta?.yjs,
+export const UniqueIdExtension = Extension.create({
+  name: "fieldTallyUniqueId",
+
+  addGlobalAttributes() {
+    return [
+      {
+        types: ID_BLOCK_TYPES,
+        attributes: {
+          id: {
+            default: null,
+            renderHTML: attributes => {
+              if (!attributes.id) return {};
+              return { "data-id": attributes.id };
+            },
+            parseHTML: element => element.getAttribute("data-id"),
+          },
+        },
+      },
+    ];
+  },
+
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey("fieldTallyUniqueId"),
+        appendTransaction: (transactions, _oldState, newState) => {
+          if (!transactions.some(transaction => transaction.docChanged)) return null;
+
+          const seen = new Set<string>();
+          const tr = newState.tr;
+
+          newState.doc.descendants((node, pos) => {
+            if (!ID_BLOCK_TYPES.includes(node.type.name)) return;
+
+            const currentId = node.attrs.id;
+            if (typeof currentId === "string" && currentId && !seen.has(currentId)) {
+              seen.add(currentId);
+              return;
+            }
+
+            const id = crypto.randomUUID();
+            seen.add(id);
+            tr.setNodeMarkup(pos, undefined, { ...node.attrs, id });
+          });
+
+          return tr.steps.length > 0 ? tr : null;
+        },
+      }),
+    ];
+  },
 });
 
 export const defaultExtensions = [

@@ -1,14 +1,15 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect } from "react";
+import type { ElementType, ReactNode } from "react";
 import { Send, CheckCircle2 } from "lucide-react";
 import { evaluateLogic, LogicBlockNode } from "../lib/logic";
 
 // ─── Text rendering helpers ──────────────────────────────
 
-function renderMarks(text: string, marks?: any[]): React.ReactNode {
+function renderMarks(text: string, marks?: any[]): ReactNode {
   if (!marks || marks.length === 0) return text;
-  let el: React.ReactNode = text;
+  let el: ReactNode = text;
   for (const mark of marks) {
     switch (mark.type) {
       case "bold": el = <strong>{el}</strong>; break;
@@ -22,7 +23,7 @@ function renderMarks(text: string, marks?: any[]): React.ReactNode {
   return el;
 }
 
-function renderInlineContent(content?: any[]): React.ReactNode[] {
+function renderInlineContent(content?: any[]): ReactNode[] {
   if (!content) return [];
   return content.map((node, i) => {
     if (node.type === "text") return <span key={i}>{renderMarks(node.text || "", node.marks)}</span>;
@@ -102,8 +103,13 @@ export default function FormRenderer({ schema, title, progressBarOffset, onSubmi
   const logicNodes: LogicBlockNode[] = useMemo(() => {
     if (!schema?.content) return [];
     return schema.content
-      .filter((n: any) => n.attrs?.id)
-      .map((n: any) => ({ id: n.attrs.id, type: n.type, rule: n.attrs?.rule }));
+      .filter((node: any) => node.attrs?.id || node.type === "logicBlock")
+      .map((node: any, index: number) => ({
+        id: node.attrs?.id || `logic-${index}`,
+        type: node.type,
+        rule: node.attrs?.rule,
+        logic: node.attrs?.logic,
+      }));
   }, [schema]);
 
   const logicResult = useMemo(() => evaluateLogic(logicNodes, answers), [logicNodes, answers]);
@@ -301,7 +307,8 @@ function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors, visib
 
   // ── Heading ──
   if (node.type === "heading") {
-    const Tag = `h${node.attrs?.level || 1}` as keyof JSX.IntrinsicElements;
+    const level = Math.min(Math.max(Number(node.attrs?.level || 1), 1), 6);
+    const Tag = `h${level}` as ElementType;
     return <Tag>{renderInlineContent(node.content)}</Tag>;
   }
 

@@ -28,6 +28,7 @@ export interface Database {
           email?: string | null
           created_at?: string | null
         }
+        Relationships: []
       }
       projects: {
         Row: {
@@ -48,6 +49,7 @@ export interface Database {
           created_by?: string | null
           created_at?: string | null
         }
+        Relationships: []
       }
       project_members: {
         Row: {
@@ -65,6 +67,7 @@ export interface Database {
           user_id?: string
           role?: 'owner' | 'editor' | 'viewer' | null
         }
+        Relationships: []
       }
       forms: {
         Row: {
@@ -94,6 +97,7 @@ export interface Database {
           created_at?: string | null
           updated_at?: string | null
         }
+        Relationships: []
       }
       form_versions: {
         Row: {
@@ -120,6 +124,7 @@ export interface Database {
           version?: number
           created_at?: string | null
         }
+        Relationships: []
       }
       form_members: {
         Row: {
@@ -137,6 +142,7 @@ export interface Database {
           user_id?: string
           role?: 'owner' | 'editor' | 'viewer' | 'submitter' | null
         }
+        Relationships: []
       }
       submissions: {
         Row: {
@@ -166,6 +172,7 @@ export interface Database {
           filled_at?: string | null
           synced_at?: string | null
         }
+        Relationships: []
       }
     }
     Views: {

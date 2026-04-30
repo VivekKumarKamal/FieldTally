@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   EditorRoot,
   EditorContent,
@@ -15,8 +14,8 @@ import {
   handleCommandNavigation,
 } from "novel";
 import type { Editor as TiptapEditor } from "@tiptap/core";
-import { Selection } from "@tiptap/pm/state";
-import { Trash, Plus, GripVertical, Copy, EyeOff, GitBranch, Bold, Italic, Strikethrough, Underline as UnderlineIcon, Link as LinkIcon } from "lucide-react";
+import { TextSelection } from "@tiptap/pm/state";
+import { Trash, Plus, GripVertical, Copy, Bold, Italic, Strikethrough, Underline as UnderlineIcon, Link as LinkIcon } from "lucide-react";
 import * as Popover from "@radix-ui/react-popover";
 import * as Switch from "@radix-ui/react-switch";
 import { Tooltip } from "../components/Tooltip";
@@ -40,6 +39,59 @@ const initialContent = {
   ],
 };
 
+const BLOCK_TYPES_WITH_IDS = new Set([
+  "shortAnswerBlock",
+  "longAnswerBlock",
+  "numberAnswerBlock",
+  "emailAnswerBlock",
+  "phoneAnswerBlock",
+  "linkAnswerBlock",
+  "dateAnswerBlock",
+  "timeAnswerBlock",
+  "checkboxBlock",
+  "multipleChoiceBlock",
+  "logicBlock",
+]);
+
+const parseStoredDraft = (raw: string | null) => {
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+
+const cloneBlockWithFreshIds = (json: any): any => {
+  if (!json || typeof json !== "object") return json;
+
+  const cloned = {
+    ...json,
+    attrs: json.attrs ? { ...json.attrs } : json.attrs,
+    content: Array.isArray(json.content)
+      ? json.content.map((child: any) => cloneBlockWithFreshIds(child))
+      : json.content,
+  };
+
+  if (BLOCK_TYPES_WITH_IDS.has(cloned.type)) {
+    cloned.attrs = { ...(cloned.attrs || {}), id: crypto.randomUUID() };
+  }
+
+  if (cloned.type === "logicBlock" && cloned.attrs?.rule) {
+    cloned.attrs.rule = {
+      ...cloned.attrs.rule,
+      id: crypto.randomUUID(),
+      conditions: (cloned.attrs.rule.conditions || []).map((condition: any) => ({
+        ...condition,
+        id: crypto.randomUUID(),
+      })),
+    };
+  }
+
+  return cloned;
+};
+
 // --------Main Component---------
 export default function Home() {
   const router = useRouter();
@@ -61,7 +113,7 @@ export default function Home() {
   const [isKeyboardActive, setIsKeyboardActive] = useState(false);
   const [activeNodePos, setActiveNodePos] = useState<number | null>(null);
   const [isRequired, setIsRequired] = useState(false);
-  const { setLogicTabOpen, setActiveBlockId } = useLogicStore();
+  const { setActiveBlockId } = useLogicStore();
 
   // --- Form Saving State ---
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -71,8 +123,8 @@ export default function Home() {
   const [editorInitialData, setEditorInitialData] = useState<any>(initialContent);
   const [formTitle, setFormTitle] = useState("");
   const [publishUrl, setPublishUrl] = useState<string | null>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const titleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const titleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const loadForm = async () => {
@@ -91,12 +143,10 @@ export default function Home() {
 
       // 1️⃣ Always try localStorage first for instant load
       const localData = localStorage.getItem(`draft_schema_${currentId}`);
-      if (localData) {
-        try {
-          const parsed = JSON.parse(localData);
-          setEditorInitialData(parsed.schema);
-          setFormTitle(parsed.title || "");
-        } catch {}
+      const parsedLocalDraft = parseStoredDraft(localData);
+      if (parsedLocalDraft) {
+        setEditorInitialData(parsedLocalDraft.schema);
+        setFormTitle(parsedLocalDraft.title || "");
       }
       // Show editor immediately with local data
       setIsLoaded(true);
@@ -113,7 +163,7 @@ export default function Home() {
           const draft = data.draft_schema as any;
           const schema = draft.content || draft;
           const remoteTitle = draft.title || "";
-          const localUpdatedAt = localData ? JSON.parse(localData).updated_at : null;
+          const localUpdatedAt = parsedLocalDraft?.updated_at || null;
           const remoteUpdatedAt = data.updated_at;
 
           // Only overwrite local if remote is newer
@@ -130,7 +180,8 @@ export default function Home() {
           }
         } else if (localData) {
           // Remote has nothing — migrate local data to Supabase
-          const parsed = JSON.parse(localData);
+          const parsed = parsedLocalDraft;
+          if (!parsed) return;
           await supabase.from('forms').upsert({
             id: currentId,
             draft_schema: { title: parsed.title || "", content: parsed.schema },
@@ -372,7 +423,7 @@ export default function Home() {
     if (pos !== null) {
       const node = editor.state.doc.nodeAt(pos);
       if (node) {
-        editor.commands.insertContentAt(pos + node.nodeSize, node.toJSON());
+        editor.commands.insertContentAt(pos + node.nodeSize, cloneBlockWithFreshIds(node.toJSON()));
       }
     }
   };
@@ -401,28 +452,36 @@ export default function Home() {
     const json = editor.getJSON();
 
     try {
-      // 1. Fetch current max version
-      const { data: latestVersion } = await supabase
-        .from('form_versions')
-        .select('version')
-        .eq('form_id', formId)
-        .order('version', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-        
-      const currentVersion = latestVersion?.version || 0;
-      const newVersion = currentVersion + 1;
+      let versionError: unknown = null;
 
-      // 2. Insert new version
-      const { error: versionError } = await supabase.from('form_versions').insert({
-        form_id: formId,
-        title: formTitle,
-        content: json,
-        version: newVersion
-      });
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const { data: latestVersion } = await supabase
+          .from('form_versions')
+          .select('version')
+          .eq('form_id', formId)
+          .order('version', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const newVersion = (latestVersion?.version || 0) + 1;
+        const { error } = await supabase.from('form_versions').insert({
+          form_id: formId,
+          title: formTitle,
+          content: json,
+          version: newVersion
+        });
+
+        if (!error) {
+          versionError = null;
+          break;
+        }
+
+        versionError = error;
+        if (error.code !== "23505") break;
+      }
+
       if (versionError) throw versionError;
 
-      // 3. Update forms table
       const { error: formError } = await supabase.from('forms').update({
         status: 'published',
         updated_at: new Date().toISOString()
@@ -444,21 +503,45 @@ export default function Home() {
   };
 
   const handleEmptyAreaClick = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest(".ProseMirror") || (e.target as HTMLElement).closest("button") || (e.target as HTMLElement).closest("input") || (e.target as HTMLElement).closest("a")) {
+    const target = e.target as HTMLElement;
+    if (target.closest("button") || target.closest("input") || target.closest("a") || target.closest("[role='menu']") || target.closest("[data-radix-popper-content-wrapper]")) {
       return;
     }
+
     const editor = editorRef.current;
     if (!editor) return;
-    
-    const { state } = editor;
-    const lastNode = state.doc.lastChild;
-    
-    if (lastNode && lastNode.type.name === "paragraph" && lastNode.content.size === 0) {
-      editor.commands.focus("end");
+
+    const editorEl = editor.view.dom;
+    if (editorEl.contains(target) && target !== editorEl) {
       return;
     }
-    
-    editor.chain().insertContentAt(state.doc.content.size, { type: "paragraph" }).focus("end").run();
+
+    const blockEls = Array.from(editorEl.children).filter((child): child is HTMLElement => child instanceof HTMLElement);
+    const nearestBlock = blockEls.reduce<HTMLElement | null>((nearest, child) => {
+      const rect = child.getBoundingClientRect();
+      const distance = Math.min(Math.abs(e.clientY - rect.top), Math.abs(e.clientY - rect.bottom), Math.abs(e.clientY - (rect.top + rect.height / 2)));
+      if (!nearest) return child;
+      const nearestRect = nearest.getBoundingClientRect();
+      const nearestDistance = Math.min(
+        Math.abs(e.clientY - nearestRect.top),
+        Math.abs(e.clientY - nearestRect.bottom),
+        Math.abs(e.clientY - (nearestRect.top + nearestRect.height / 2))
+      );
+      return distance < nearestDistance ? child : nearest;
+    }, null);
+
+    if (nearestBlock) {
+      const pos = editor.view.posAtDOM(nearestBlock, 0);
+      const focusPos = Math.max(1, Math.min(pos + 1, editor.state.doc.content.size));
+      const tr = editor.state.tr.setSelection(TextSelection.near(editor.state.doc.resolve(focusPos), 1));
+      editor.view.dispatch(tr);
+      editor.view.focus();
+      return;
+    }
+
+    const fallbackPos = Math.max(1, Math.min(lastSelectionRef.current, editor.state.doc.content.size));
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.near(editor.state.doc.resolve(fallbackPos), 1)));
+    editor.view.focus();
   };
 
   return (

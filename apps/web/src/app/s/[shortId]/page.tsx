@@ -1,13 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { supabase } from "../../../lib/supabase";
 import { decodeShortIdToUuid } from "../../../lib/shortid";
 import FormRenderer from "../../../components/FormRenderer";
 
 export default function SubmissionPage() {
-  const router = useRouter();
   const params = useParams();
   const shortId = params.shortId as string;
   
@@ -60,7 +59,7 @@ export default function SubmissionPage() {
         setFormTitle(latestVersion.title);
         setFormVersionId(latestVersion.id);
         setLoading(false);
-      } catch (err) {
+      } catch {
         setError("Error loading form.");
         setLoading(false);
       }
