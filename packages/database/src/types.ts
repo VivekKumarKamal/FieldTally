@@ -69,11 +69,8 @@ export interface Database {
       forms: {
         Row: {
           id: string
-          title: string
           draft_schema: Json
-          published_schema: Json | null
           status: 'draft' | 'published' | 'archived' | null
-          version: number | null
           project_id: string | null
           created_by: string | null
           created_at: string | null
@@ -81,11 +78,8 @@ export interface Database {
         }
         Insert: {
           id?: string
-          title?: string
           draft_schema?: Json
-          published_schema?: Json | null
           status?: 'draft' | 'published' | 'archived' | null
-          version?: number | null
           project_id?: string | null
           created_by?: string | null
           created_at?: string | null
@@ -93,15 +87,38 @@ export interface Database {
         }
         Update: {
           id?: string
-          title?: string
           draft_schema?: Json
-          published_schema?: Json | null
           status?: 'draft' | 'published' | 'archived' | null
-          version?: number | null
           project_id?: string | null
           created_by?: string | null
           created_at?: string | null
           updated_at?: string | null
+        }
+      }
+      form_versions: {
+        Row: {
+          id: string
+          form_id: string
+          title: string
+          content: Json
+          version: number
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          form_id: string
+          title: string
+          content: Json
+          version: number
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          form_id?: string
+          title?: string
+          content?: Json
+          version?: number
+          created_at?: string | null
         }
       }
       form_members: {
@@ -125,7 +142,7 @@ export interface Database {
         Row: {
           id: string
           form_id: string
-          form_version: number
+          form_version_id: string
           submitted_by: string | null
           data: Json
           filled_at: string | null
@@ -134,7 +151,7 @@ export interface Database {
         Insert: {
           id?: string
           form_id: string
-          form_version: number
+          form_version_id: string
           submitted_by?: string | null
           data: Json
           filled_at?: string | null
@@ -143,7 +160,7 @@ export interface Database {
         Update: {
           id?: string
           form_id?: string
-          form_version?: number
+          form_version_id?: string
           submitted_by?: string | null
           data?: Json
           filled_at?: string | null

@@ -24,6 +24,7 @@ import { supabase } from "../lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useLogicStore } from "../hooks/useLogicStore";
+import { encodeUuidToShortId } from "../lib/shortid";
 
 import { defaultExtensions } from "./extension";
 import { slashCommand, suggestionItems } from "./slashCommand";
@@ -69,6 +70,7 @@ export default function Home() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [editorInitialData, setEditorInitialData] = useState<any>(initialContent);
   const [formTitle, setFormTitle] = useState("");
+  const [publishUrl, setPublishUrl] = useState<string | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const titleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -87,38 +89,56 @@ export default function Home() {
       }
       setFormId(currentId);
 
-      if (user) {
-        // Fetch from supabase
-        const { data, error } = await supabase.from('forms').select('draft_schema, title').eq('id', currentId).single();
-        if (data?.draft_schema) {
-          setEditorInitialData(data.draft_schema);
-          setFormTitle(data.title || "");
-        } else {
-          // Check local storage for migration
-          const localData = localStorage.getItem(`draft_schema_${currentId}`);
-          if (localData) {
-            const parsed = JSON.parse(localData);
-            setEditorInitialData(parsed.schema);
-            setFormTitle(parsed.title || "");
-            await supabase.from('forms').upsert({
-              id: currentId,
-              draft_schema: parsed.schema,
-              title: parsed.title || "",
-              created_by: user.id
-            });
-            localStorage.removeItem(`draft_schema_${currentId}`);
-          }
-        }
-      } else {
-        // Fetch from local storage
-        const localData = localStorage.getItem(`draft_schema_${currentId}`);
-        if (localData) {
+      // 1️⃣ Always try localStorage first for instant load
+      const localData = localStorage.getItem(`draft_schema_${currentId}`);
+      if (localData) {
+        try {
           const parsed = JSON.parse(localData);
           setEditorInitialData(parsed.schema);
           setFormTitle(parsed.title || "");
+        } catch {}
+      }
+      // Show editor immediately with local data
+      setIsLoaded(true);
+
+      // 2️⃣ For logged-in users, sync with Supabase in background
+      if (user) {
+        const { data } = await supabase
+          .from('forms')
+          .select('draft_schema, updated_at')
+          .eq('id', currentId)
+          .single();
+
+        if (data?.draft_schema) {
+          const draft = data.draft_schema as any;
+          const schema = draft.content || draft;
+          const remoteTitle = draft.title || "";
+          const localUpdatedAt = localData ? JSON.parse(localData).updated_at : null;
+          const remoteUpdatedAt = data.updated_at;
+
+          // Only overwrite local if remote is newer
+          if (!localUpdatedAt || (remoteUpdatedAt && new Date(remoteUpdatedAt) > new Date(localUpdatedAt))) {
+            setEditorInitialData(schema);
+            setFormTitle(remoteTitle);
+            setEditorKey(k => k + 1); // remount editor with fresh data
+            // Update local cache with remote data
+            localStorage.setItem(`draft_schema_${currentId}`, JSON.stringify({
+              schema: schema,
+              title: remoteTitle,
+              updated_at: remoteUpdatedAt,
+            }));
+          }
+        } else if (localData) {
+          // Remote has nothing — migrate local data to Supabase
+          const parsed = JSON.parse(localData);
+          await supabase.from('forms').upsert({
+            id: currentId,
+            draft_schema: { title: parsed.title || "", content: parsed.schema },
+            created_by: user.id,
+            updated_at: parsed.updated_at || new Date().toISOString(),
+          });
         }
       }
-      setIsLoaded(true);
     };
     loadForm();
   }, []);
@@ -127,24 +147,26 @@ export default function Home() {
     if (!formId) return;
     setSaveStatus("saving");
     const titleToSave = titleOverride !== undefined ? titleOverride : formTitle;
+    const now = new Date().toISOString();
 
     try {
+      // Always write to localStorage for fast cache
+      localStorage.setItem(`draft_schema_${formId}`, JSON.stringify({
+        schema: json,
+        title: titleToSave,
+        updated_at: now,
+      }));
+
+      // If logged in, also persist to Supabase
       if (userId) {
         const { error } = await supabase.from('forms').upsert({
           id: formId,
-          draft_schema: json,
-          title: titleToSave,
+          draft_schema: { title: titleToSave, content: json },
           created_by: userId,
-          updated_at: new Date().toISOString()
+          updated_at: now,
         }, { onConflict: 'id' });
         
         if (error) throw error;
-      } else {
-        localStorage.setItem(`draft_schema_${formId}`, JSON.stringify({
-          schema: json,
-          title: titleToSave,
-          updated_at: new Date().toISOString()
-        }));
       }
       setSaveStatus("saved");
     } catch (err: any) {
@@ -355,12 +377,14 @@ export default function Home() {
     }
   };
 
-  // Grabs editor JSON and opens the preview modal
+  // Navigate to the live form preview
   const handleSubmit = () => {
     const editor = editorRef.current;
     if (!editor) return;
     const json = editor.getJSON();
-    setJsonOutput(JSON.stringify(json, null, 2));
+    localStorage.setItem("preview_form_schema", JSON.stringify(json));
+    localStorage.setItem("preview_form_title", formTitle);
+    router.push("/preview");
   };
 
   const handlePublish = async () => {
@@ -376,19 +400,41 @@ export default function Home() {
     if (!editor) return;
     const json = editor.getJSON();
 
-    const { error } = await supabase.from('forms').update({
-      published_schema: json,
-      title: formTitle,
-      status: 'published',
-      updated_at: new Date().toISOString()
-    }).eq('id', formId);
+    try {
+      // 1. Fetch current max version
+      const { data: latestVersion } = await supabase
+        .from('form_versions')
+        .select('version')
+        .eq('form_id', formId)
+        .order('version', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+        
+      const currentVersion = latestVersion?.version || 0;
+      const newVersion = currentVersion + 1;
 
-    if (error) {
-      console.error(error);
-      setSaveStatus("error");
-    } else {
+      // 2. Insert new version
+      const { error: versionError } = await supabase.from('form_versions').insert({
+        form_id: formId,
+        title: formTitle,
+        content: json,
+        version: newVersion
+      });
+      if (versionError) throw versionError;
+
+      // 3. Update forms table
+      const { error: formError } = await supabase.from('forms').update({
+        status: 'published',
+        updated_at: new Date().toISOString()
+      }).eq('id', formId);
+
+      if (formError) throw formError;
+      
       setSaveStatus("saved");
-      alert("Form published successfully!");
+      setPublishUrl(`${window.location.origin}/s/${encodeUuidToShortId(formId)}`);
+    } catch (err) {
+      console.error(err);
+      setSaveStatus("error");
     }
   };
 
@@ -473,7 +519,7 @@ export default function Home() {
       <div className="px-12 pt-36 pb-24 max-w-4xl mx-auto">
       {/* Custom drag handle injected into the DOM for GlobalDragHandle to use */}
       <div 
-        className={`custom-drag-handle gap-0.5 fixed z-50 bg-white ml-4 text-zinc-400 ${menuOpen || isKeyboardActive ? 'hidden' : 'flex'}`}
+        className={`custom-drag-handle gap-0.5 fixed z-50 bg-white ml-4 text-zinc-400 ${isKeyboardActive && !menuOpen ? 'hidden' : 'flex'}`}
         data-menu-open={menuOpen}
       >
         <Tooltip content={
@@ -685,6 +731,43 @@ export default function Home() {
         )}
       </EditorRoot>
       </div>
+
+      {/* Publish Success Modal */}
+      {publishUrl && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setPublishUrl(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+            <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-semibold text-zinc-900 mb-2">Form Published!</h3>
+            <p className="text-sm text-zinc-500 mb-6">Your form is now live and ready to accept responses. Share the link below.</p>
+            
+            <div className="flex items-center gap-2 mb-6">
+              <div className="flex-1 bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-700 font-medium truncate select-all">
+                {publishUrl}
+              </div>
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(publishUrl);
+                  alert("Link copied!");
+                }}
+                className="px-4 py-2 bg-zinc-900 text-white rounded-lg text-sm font-medium hover:bg-zinc-800 transition-colors"
+              >
+                Copy
+              </button>
+            </div>
+            
+            <button 
+              onClick={() => setPublishUrl(null)}
+              className="w-full px-4 py-2 bg-zinc-100 text-zinc-700 hover:bg-zinc-200 rounded-lg text-sm font-medium transition-colors"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* JSON output modal */}
       {jsonOutput !== null && (
