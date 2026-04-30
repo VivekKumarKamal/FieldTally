@@ -57,6 +57,7 @@ export default function Home() {
   const lastSelectionRef = useRef(1);
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isKeyboardActive, setIsKeyboardActive] = useState(false);
   const [activeNodePos, setActiveNodePos] = useState<number | null>(null);
   const [isRequired, setIsRequired] = useState(false);
   const { setLogicTabOpen, setActiveBlockId } = useLogicStore();
@@ -396,8 +397,26 @@ export default function Home() {
     setUserId(null);
   };
 
+  const handleEmptyAreaClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest(".ProseMirror") || (e.target as HTMLElement).closest("button") || (e.target as HTMLElement).closest("input") || (e.target as HTMLElement).closest("a")) {
+      return;
+    }
+    const editor = editorRef.current;
+    if (!editor) return;
+    
+    const { state } = editor;
+    const lastNode = state.doc.lastChild;
+    
+    if (lastNode && lastNode.type.name === "paragraph" && lastNode.content.size === 0) {
+      editor.commands.focus("end");
+      return;
+    }
+    
+    editor.chain().insertContentAt(state.doc.content.size, { type: "paragraph" }).focus("end").run();
+  };
+
   return (
-    <div className={`min-h-screen w-screen relative ${menuOpen ? 'editor-menu-open' : ''}`}>
+    <div className={`min-h-screen w-screen relative ${menuOpen ? 'editor-menu-open' : ''}`} onClick={handleEmptyAreaClick} onMouseMove={() => { if (isKeyboardActive) setIsKeyboardActive(false); }}>
       {/* Top Navigation Bar */}
       <div className="fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-b border-zinc-200 z-[100] px-6 flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -454,7 +473,7 @@ export default function Home() {
       <div className="px-12 pt-36 pb-24 max-w-4xl mx-auto">
       {/* Custom drag handle injected into the DOM for GlobalDragHandle to use */}
       <div 
-        className={`custom-drag-handle flex gap-0.5 fixed z-50 bg-white ml-4 text-zinc-400 ${menuOpen ? 'opacity-0 pointer-events-none' : ''}`}
+        className={`custom-drag-handle gap-0.5 fixed z-50 bg-white ml-4 text-zinc-400 ${menuOpen || isKeyboardActive ? 'hidden' : 'flex'}`}
         data-menu-open={menuOpen}
       >
         <Tooltip content={
@@ -578,7 +597,12 @@ export default function Home() {
             extensions={extensions}
             onCreate={({ editor }) => syncEditorSelection(editor)}
             onSelectionUpdate={({ editor }) => syncEditorSelection(editor)}
-            editorProps={{ handleKeyDown: (_, event) => handleCommandNavigation(event) }}
+            editorProps={{ 
+              handleKeyDown: (_, event) => {
+                setIsKeyboardActive(true);
+                return handleCommandNavigation(event);
+              } 
+            }}
             onUpdate={({ editor }) => handleEditorUpdate(editor)}
             immediatelyRender={false}
           >
