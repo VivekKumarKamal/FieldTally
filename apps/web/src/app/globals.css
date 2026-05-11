@@ -248,10 +248,11 @@ body {
 .tiptap .block-placeholder-input {
   display: block;
   width: 100%;
-  border: none;
-  border-bottom: 1.5px solid #d1d5db;
+  border: 1px solid #e4e4e7;
+  border-radius: 8px;
   outline: none;
-  padding: 4px 0;
+  padding: 8px 12px;
+  margin: 10px 0 20px 0;
   font-size: 0.9em;
   /* Typed text is always dim — signals it's a placeholder, not real content */
   color: #adb5bd;
@@ -259,6 +260,11 @@ body {
   cursor: text;
   caret-color: #3b82f6;
   font-family: inherit;
+  transition: border-color 0.15s ease;
+}
+
+.tiptap .block-placeholder-input:focus {
+  border-color: #a1a1aa;
 }
 
 /* Placeholder hint text hidden by default */
@@ -284,14 +290,73 @@ body {
 .tiptap .link-answer-field {
   display: flex;
   align-items: center;
-  border-bottom: 1.5px solid #d1d5db;
-  padding: 2px 0;
-  gap: 2px;
+  border: 1px solid #e4e4e7;
+  border-radius: 8px;
+  padding: 0 12px;
+  gap: 4px;
+  transition: border-color 0.15s ease;
+}
+
+.tiptap .link-answer-field:focus-within {
+  border-color: #a1a1aa;
 }
 
 .tiptap .link-answer-field .block-placeholder-input {
-  border-bottom: none;
-  padding: 0;
+  border: none;
+  border-radius: 0;
+  padding: 8px 0;
+}
+
+/* ─── Phone Answer Field (box style) ─── */
+.phone-answer-field {
+  display: flex;
+  align-items: center;
+  border: 1px solid #e4e4e7;
+  border-radius: 8px;
+  padding: 0 12px;
+  gap: 4px;
+  transition: border-color 0.15s ease;
+}
+
+.phone-answer-field:focus-within {
+  border-color: #a1a1aa;
+}
+
+.phone-cc-prefix {
+  color: #a1a1aa;
+  font-size: 0.9em;
+  user-select: none;
+}
+
+.phone-cc-input {
+  min-width: 1ch;
+  border: none;
+  outline: none;
+  color: #3f3f46;
+  font-size: 0.9em;
+  background: transparent;
+  padding: 8px 0;
+  font-family: inherit;
+}
+
+.phone-separator {
+  color: #e4e4e7;
+  user-select: none;
+}
+
+.phone-num-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  color: #3f3f46;
+  font-size: 0.9em;
+  background: transparent;
+  padding: 8px 0;
+  font-family: inherit;
+}
+
+.phone-num-input::placeholder {
+  color: #d1d5db;
 }
 
 /* ─── Long Answer Block ─── */
@@ -384,8 +449,8 @@ body {
 /* ─── Shared Required Badge Styles ─── */
 /* Edit this block to change the look of the asterisk across all question types */
 .tiptap .required-badge,
-.tiptap [data-required="true"] div[data-type="checkbox-title"]::after,
-.tiptap [data-required="true"] div[data-type="multiple-choice-title"]::after {
+.tiptap:not(.form-renderer) [data-required="true"] div[data-type="checkbox-title"]::after,
+.tiptap:not(.form-renderer) [data-required="true"] div[data-type="multiple-choice-title"]::after {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -406,20 +471,26 @@ body {
   flex-shrink: 0;
 }
 
-/* React specific styles (hover & layout) */
-.tiptap .required-badge {
+/* React specific styles (hover & layout) — editor only */
+.tiptap:not(.form-renderer) .required-badge {
   cursor: pointer;
   transition: all 0.15s ease;
   pointer-events: auto !important; /* Forces Tiptap to allow clicks/hovers on this non-editable element */
 }
 
-.tiptap .required-badge:hover {
+.tiptap:not(.form-renderer) .required-badge:hover {
   background-color: #e8e8e8;
 }
 
-/* ProseMirror non-React specific styles */
-.tiptap [data-required="true"] div[data-type="checkbox-title"]::after,
-.tiptap [data-required="true"] div[data-type="multiple-choice-title"]::after {
+/* In preview/submission mode, the badge is read-only */
+.form-renderer .required-badge {
+  cursor: default;
+  pointer-events: none;
+}
+
+/* ProseMirror non-React specific styles — editor only (not form-renderer) */
+.tiptap:not(.form-renderer) [data-required="true"] div[data-type="checkbox-title"]::after,
+.tiptap:not(.form-renderer) [data-required="true"] div[data-type="multiple-choice-title"]::after {
   content: "*";
   margin-left: 8px;
   vertical-align: middle;
@@ -570,8 +641,8 @@ body {
 
 /* Hide the asterisk completely when the question text is empty */
 .tiptap [class$="-title"].is-empty + .required-badge,
-.tiptap [data-required="true"] div[data-type="checkbox-title"].is-empty::after,
-.tiptap [data-required="true"] div[data-type="multiple-choice-title"].is-empty::after {
+.tiptap:not(.form-renderer) [data-required="true"] div[data-type="checkbox-title"].is-empty::after,
+.tiptap:not(.form-renderer) [data-required="true"] div[data-type="multiple-choice-title"].is-empty::after {
   display: none !important;
 }
 
@@ -581,4 +652,23 @@ body {
 
 .preview-error-field {
   border-color: #fca5a5 !important;
+}
+
+/* ─── Turn Into Submenu ─── */
+.turn-into-list {
+  scrollbar-width: thin;
+  scrollbar-color: #d4d4d8 transparent;
+}
+
+.turn-into-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.turn-into-list::-webkit-scrollbar-thumb {
+  background: #d4d4d8;
+  border-radius: 2px;
+}
+
+.turn-into-list::-webkit-scrollbar-track {
+  background: transparent;
 }

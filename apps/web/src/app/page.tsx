@@ -15,7 +15,14 @@ import {
 } from "novel";
 import type { Editor as TiptapEditor } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
-import { Trash, Plus, GripVertical, Copy, Bold, Italic, Strikethrough, Underline as UnderlineIcon, Link as LinkIcon } from "lucide-react";
+import {
+  Trash, Plus, GripVertical, Copy, Bold, Italic, Strikethrough,
+  Underline as UnderlineIcon, Link as LinkIcon,
+  RefreshCw, ChevronRight,
+  Type, Hash, Mail, Phone, Link2, Calendar, Clock, AlignLeft,
+  CheckSquare, CircleDot,
+  Heading1, Heading2, Heading3, List, ListOrdered, Cloud, Check
+} from "lucide-react";
 import * as Popover from "@radix-ui/react-popover";
 import * as Switch from "@radix-ui/react-switch";
 import { Tooltip } from "../components/Tooltip";
@@ -23,10 +30,31 @@ import { supabase } from "../lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useLogicStore } from "../hooks/useLogicStore";
-import { encodeUuidToShortId } from "../lib/shortid";
+import { turnBlockInto, TURN_INTO_TARGETS, isConvertibleBlock, resolveTargetKey } from "../lib/turnInto";
+import { loadForm as loadFormAction, saveDraft, publishForm, type SaveStatus } from "../lib/formActions";
 
 import { defaultExtensions } from "./extension";
 import { slashCommand, suggestionItems } from "./slashCommand";
+
+// Icon map for the "Turn Into" submenu
+const TURN_INTO_ICONS: Record<string, React.ReactNode> = {
+  paragraph:           <span className="text-sm font-semibold">T</span>,
+  "heading-1":         <Heading1 size={16} />,
+  "heading-2":         <Heading2 size={16} />,
+  "heading-3":         <Heading3 size={16} />,
+  bulletList:          <List size={16} />,
+  orderedList:         <ListOrdered size={16} />,
+  shortAnswerBlock:    <Type size={16} />,
+  longAnswerBlock:     <AlignLeft size={16} />,
+  numberAnswerBlock:   <Hash size={16} />,
+  emailAnswerBlock:    <Mail size={16} />,
+  phoneAnswerBlock:    <Phone size={16} />,
+  linkAnswerBlock:     <Link2 size={16} />,
+  dateAnswerBlock:     <Calendar size={16} />,
+  timeAnswerBlock:     <Clock size={16} />,
+  checkboxBlock:       <CheckSquare size={16} />,
+  multipleChoiceBlock: <CircleDot size={16} />,
+};
 
 //-------Initial Content---------
 const initialContent = {
@@ -53,15 +81,6 @@ const BLOCK_TYPES_WITH_IDS = new Set([
   "logicBlock",
 ]);
 
-const parseStoredDraft = (raw: string | null) => {
-  if (!raw) return null;
-
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-};
 
 const cloneBlockWithFreshIds = (json: any): any => {
   if (!json || typeof json !== "object") return json;
@@ -92,6 +111,18 @@ const cloneBlockWithFreshIds = (json: any): any => {
   return cloned;
 };
 
+// Helper to deterministically pick an animal avatar based on email
+function getAnimalAvatar(email: string | undefined) {
+  if (!email) return "/avatars/panda.png";
+  const animals = ["cat", "fox", "panda"];
+  let hash = 0;
+  for (let i = 0; i < email.length; i++) {
+    hash = email.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % animals.length;
+  return `/avatars/${animals[index]}.png`;
+}
+
 // --------Main Component---------
 export default function Home() {
   const router = useRouter();
@@ -113,117 +144,52 @@ export default function Home() {
   const [isKeyboardActive, setIsKeyboardActive] = useState(false);
   const [activeNodePos, setActiveNodePos] = useState<number | null>(null);
   const [isRequired, setIsRequired] = useState(false);
+  const [turnIntoOpen, setTurnIntoOpen] = useState(false);
+  const [menuVerticalAlign, setMenuVerticalAlign] = useState<"top" | "bottom">("top");
+  const [activeNodeType, setActiveNodeType] = useState<string | null>(null);
   const { setActiveBlockId } = useLogicStore();
 
   // --- Form Saving State ---
-  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [formId, setFormId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [editorInitialData, setEditorInitialData] = useState<any>(initialContent);
   const [formTitle, setFormTitle] = useState("");
   const [publishUrl, setPublishUrl] = useState<string | null>(null);
+  const [formVersion, setFormVersion] = useState<number | null>(null);
+  const [userProfile, setUserProfile] = useState<{ email?: string, avatar_url?: string } | null>(null);
+  const [copiedUrl, setCopiedUrl] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const loadForm = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUserId(user?.id || null);
-
-      let currentId = localStorage.getItem("current_draft_form_id");
-      if (!currentId) {
-        currentId = crypto.randomUUID();
-        localStorage.setItem("current_draft_form_id", currentId);
-        setFormId(currentId);
-        setIsLoaded(true);
-        return;
-      }
-      setFormId(currentId);
-
-      // 1️⃣ Always try localStorage first for instant load
-      const localData = localStorage.getItem(`draft_schema_${currentId}`);
-      const parsedLocalDraft = parseStoredDraft(localData);
-      if (parsedLocalDraft) {
-        setEditorInitialData(parsedLocalDraft.schema);
-        setFormTitle(parsedLocalDraft.title || "");
-      }
-      // Show editor immediately with local data
+    loadFormAction(initialContent).then((result) => {
+      setUserId(result.userId);
+      setFormId(result.formId);
+      setEditorInitialData(result.schema);
+      setFormTitle(result.title);
+      setFormVersion(result.version || null);
+      if (result.shouldRemount) setEditorKey(k => k + 1);
       setIsLoaded(true);
+    });
 
-      // 2️⃣ For logged-in users, sync with Supabase in background
-      if (user) {
-        const { data } = await supabase
-          .from('forms')
-          .select('draft_schema, updated_at')
-          .eq('id', currentId)
-          .single();
-
-        if (data?.draft_schema) {
-          const draft = data.draft_schema as any;
-          const schema = draft.content || draft;
-          const remoteTitle = draft.title || "";
-          const localUpdatedAt = parsedLocalDraft?.updated_at || null;
-          const remoteUpdatedAt = data.updated_at;
-
-          // Only overwrite local if remote is newer
-          if (!localUpdatedAt || (remoteUpdatedAt && new Date(remoteUpdatedAt) > new Date(localUpdatedAt))) {
-            setEditorInitialData(schema);
-            setFormTitle(remoteTitle);
-            setEditorKey(k => k + 1); // remount editor with fresh data
-            // Update local cache with remote data
-            localStorage.setItem(`draft_schema_${currentId}`, JSON.stringify({
-              schema: schema,
-              title: remoteTitle,
-              updated_at: remoteUpdatedAt,
-            }));
-          }
-        } else if (localData) {
-          // Remote has nothing — migrate local data to Supabase
-          const parsed = parsedLocalDraft;
-          if (!parsed) return;
-          await supabase.from('forms').upsert({
-            id: currentId,
-            draft_schema: { title: parsed.title || "", content: parsed.schema },
-            created_by: user.id,
-            updated_at: parsed.updated_at || new Date().toISOString(),
-          });
-        }
+    supabase.auth.getUser().then(({ data }) => {
+      if (data?.user) {
+        setUserProfile({
+          email: data.user.email,
+          avatar_url: data.user.user_metadata?.avatar_url
+        });
       }
-    };
-    loadForm();
+    });
   }, []);
 
   const saveForm = async (json: any, titleOverride?: string) => {
     if (!formId) return;
     setSaveStatus("saving");
     const titleToSave = titleOverride !== undefined ? titleOverride : formTitle;
-    const now = new Date().toISOString();
-
-    try {
-      // Always write to localStorage for fast cache
-      localStorage.setItem(`draft_schema_${formId}`, JSON.stringify({
-        schema: json,
-        title: titleToSave,
-        updated_at: now,
-      }));
-
-      // If logged in, also persist to Supabase
-      if (userId) {
-        const { error } = await supabase.from('forms').upsert({
-          id: formId,
-          draft_schema: { title: titleToSave, content: json },
-          created_by: userId,
-          updated_at: now,
-        }, { onConflict: 'id' });
-        
-        if (error) throw error;
-      }
-      setSaveStatus("saved");
-    } catch (err: any) {
-      console.error("Failed to save form. Details:", JSON.stringify(err, null, 2));
-      setSaveStatus("error");
-    }
+    const result = await saveDraft(formId, userId, json, titleToSave);
+    setSaveStatus(result.ok ? "saved" : "error");
   };
 
   // Auto-save whenever only the title changes (no editor update)
@@ -255,11 +221,20 @@ export default function Home() {
         if (node) {
           setIsRequired(node.attrs.required !== false);
           setActiveBlockId(node.attrs.id || null);
+          setActiveNodeType(resolveTargetKey(node.type.name, node.attrs));
         }
       }
     } else {
-      // setActiveNodePos(null); // Keep it active in case they are interacting with the sidebar
+      setTurnIntoOpen(false);
     }
+  };
+
+  const handleTurnInto = (targetKey: string) => {
+    const editor = editorRef.current;
+    if (!editor || activeNodePos === null) return;
+    turnBlockInto(editor, activeNodePos, targetKey);
+    setMenuOpen(false);
+    setTurnIntoOpen(false);
   };
 
   useEffect(() => {
@@ -451,49 +426,15 @@ export default function Home() {
     if (!editor) return;
     const json = editor.getJSON();
 
-    try {
-      let versionError: unknown = null;
-
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const { data: latestVersion } = await supabase
-          .from('form_versions')
-          .select('version')
-          .eq('form_id', formId)
-          .order('version', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        const newVersion = (latestVersion?.version || 0) + 1;
-        const { error } = await supabase.from('form_versions').insert({
-          form_id: formId,
-          title: formTitle,
-          content: json,
-          version: newVersion
-        });
-
-        if (!error) {
-          versionError = null;
-          break;
-        }
-
-        versionError = error;
-        if (error.code !== "23505") break;
-      }
-
-      if (versionError) throw versionError;
-
-      const { error: formError } = await supabase.from('forms').update({
-        status: 'published',
-        updated_at: new Date().toISOString()
-      }).eq('id', formId);
-
-      if (formError) throw formError;
-      
+    const result = await publishForm(formId, userId, json, formTitle);
+    
+    if (result.ok) {
       setSaveStatus("saved");
-      setPublishUrl(`${window.location.origin}/s/${encodeUuidToShortId(formId)}`);
-    } catch (err) {
-      console.error(err);
+      setPublishUrl(result.url || null);
+      setFormVersion(prev => (prev || 0) + 1);
+    } else {
       setSaveStatus("error");
+      alert(`Publish failed: ${result.error}`);
     }
   };
 
@@ -504,7 +445,7 @@ export default function Home() {
 
   const handleEmptyAreaClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
-    if (target.closest("button") || target.closest("input") || target.closest("a") || target.closest("[role='menu']") || target.closest("[data-radix-popper-content-wrapper]")) {
+    if (target.closest("button") || target.closest("input") || target.closest("a") || target.closest("[role='menu']") || target.closest("[data-radix-popper-content-wrapper]") || target.closest("textarea") || target.closest("select")) {
       return;
     }
 
@@ -517,6 +458,21 @@ export default function Home() {
     }
 
     const blockEls = Array.from(editorEl.children).filter((child): child is HTMLElement => child instanceof HTMLElement);
+
+    // Check if the click is below the last block — if so, create a new paragraph
+    const lastBlock = blockEls[blockEls.length - 1];
+    if (lastBlock) {
+      const lastRect = lastBlock.getBoundingClientRect();
+      if (e.clientY > lastRect.bottom + 4) {
+        // Click is below all content — append a new paragraph and focus it
+        const endPos = editor.state.doc.content.size;
+        editor.commands.insertContentAt(endPos, { type: "paragraph" });
+        const newEndPos = editor.state.doc.content.size - 1;
+        editor.commands.focus(newEndPos);
+        return;
+      }
+    }
+
     const nearestBlock = blockEls.reduce<HTMLElement | null>((nearest, child) => {
       const rect = child.getBoundingClientRect();
       const distance = Math.min(Math.abs(e.clientY - rect.top), Math.abs(e.clientY - rect.bottom), Math.abs(e.clientY - (rect.top + rect.height / 2)));
@@ -539,9 +495,10 @@ export default function Home() {
       return;
     }
 
-    const fallbackPos = Math.max(1, Math.min(lastSelectionRef.current, editor.state.doc.content.size));
-    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.near(editor.state.doc.resolve(fallbackPos), 1)));
-    editor.view.focus();
+    // No blocks at all — create the first paragraph
+    const endPos = editor.state.doc.content.size;
+    editor.commands.insertContentAt(endPos, { type: "paragraph" });
+    editor.commands.focus(endPos + 1);
   };
 
   return (
@@ -550,42 +507,82 @@ export default function Home() {
       <div className="fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-b border-zinc-200 z-[100] px-6 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <h1 className="font-semibold text-zinc-800">FieldTally</h1>
+          {formVersion !== null && (
+            <span className="text-xs font-medium text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded-full">
+              v{formVersion}
+            </span>
+          )}
           <div className="h-4 w-px bg-zinc-300"></div>
-          <div className="text-sm font-medium">
-            {saveStatus === 'saving' && <span className="text-zinc-500 animate-pulse">Saving draft...</span>}
-            {saveStatus === 'saved' && <span className="text-green-600">Draft saved</span>}
-            {saveStatus === 'error' && <span className="text-red-500">Failed to save draft</span>}
-          </div>
+          
+          <button 
+            onClick={() => { if (editorRef.current) saveForm(editorRef.current.getJSON()); }}
+            className="group flex items-center gap-2 px-2 py-1 hover:bg-zinc-100 rounded-lg transition-colors cursor-pointer"
+            title="Save draft"
+          >
+            {saveStatus === 'saving' && <Cloud className="w-5 h-5 text-zinc-400 animate-pulse" />}
+            {saveStatus === 'saved' && <Cloud className="w-5 h-5 text-green-500" />}
+            {saveStatus === 'error' && <Cloud className="w-5 h-5 text-red-500" />}
+            {saveStatus === 'idle' && <Cloud className="w-5 h-5 text-zinc-400 group-hover:text-zinc-600 transition-colors" />}
+            
+            <div className="text-sm font-medium">
+              {saveStatus === 'saving' && <span className="text-zinc-500">Saving...</span>}
+              {saveStatus === 'saved' && <span className="text-green-600">Saved</span>}
+              {saveStatus === 'error' && <span className="text-red-500">Error</span>}
+            </div>
+          </button>
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => {
-              if (editorRef.current) saveForm(editorRef.current.getJSON());
-            }}
-            className="px-3 py-1.5 text-sm font-medium text-zinc-600 hover:text-zinc-900 transition-colors"
-          >
-            Save Draft
-          </button>
           <button
             onClick={handleSubmit}
             className="px-3 py-1.5 text-sm font-medium text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors"
           >
             Preview
           </button>
-          <button
-            onClick={handlePublish}
-            className="px-4 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors"
-          >
-            Publish
-          </button>
+          
+          <div className="flex items-center">
+            <button
+              onClick={handlePublish}
+              className={`px-4 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-colors ${publishUrl ? 'rounded-l-lg' : 'rounded-lg'}`}
+            >
+              Publish
+            </button>
+            {publishUrl && (
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(publishUrl);
+                  setCopiedUrl(true);
+                  setTimeout(() => setCopiedUrl(false), 2000);
+                }}
+                title="Copy Link"
+                className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-r-lg border-l border-blue-500/30 transition-colors flex items-center"
+              >
+                {copiedUrl ? <Check size={16} /> : <LinkIcon size={16} />}
+              </button>
+            )}
+          </div>
           
           <div className="w-px h-4 bg-zinc-300 mx-2"></div>
 
           {userId ? (
-            <button onClick={handleLogout} className="text-sm font-medium text-zinc-600 hover:text-red-600 transition-colors">
-              Sign Out
-            </button>
+            <Popover.Root>
+              <Popover.Trigger asChild>
+                <button className="relative w-8 h-8 rounded-full border border-zinc-200 overflow-hidden hover:ring-2 hover:ring-zinc-200 transition-all group focus:outline-none" title={userProfile?.email}>
+                  <img src={getAnimalAvatar(userProfile?.email)} alt="Profile" className="w-full h-full object-cover bg-zinc-50" />
+                </button>
+              </Popover.Trigger>
+              <Popover.Content align="end" sideOffset={8} className="w-56 p-2 rounded-xl border border-zinc-200 bg-white shadow-xl z-[150] outline-none">
+                <div className="px-3 py-2 border-b border-zinc-100 mb-2">
+                  <p className="text-sm font-medium text-zinc-900 truncate">{userProfile?.email || 'Logged in'}</p>
+                </div>
+                <button 
+                  onClick={handleLogout} 
+                  className="w-full text-left px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  Sign Out
+                </button>
+              </Popover.Content>
+            </Popover.Root>
           ) : (
             <>
               <Link href="/login" className="text-sm font-medium text-zinc-600 hover:text-zinc-900 transition-colors">
@@ -648,36 +645,135 @@ export default function Home() {
           </Tooltip>
           
           <Popover.Content
-            className="w-64 p-2 rounded-xl border border-zinc-200 bg-white shadow-xl text-sm z-[60] flex flex-col focus:outline-none"
+            className="w-64 p-2 rounded-xl border border-zinc-200 bg-white shadow-xl text-sm z-[60] flex flex-col focus:outline-none overflow-visible"
             side="right"
             align="start"
             sideOffset={8}
           >
-            <div className="flex items-center justify-between px-2 py-2">
-              <span className="text-zinc-700">Required</span>
-              <Switch.Root
-                checked={isRequired}
-                onCheckedChange={(checked) => {
-                  setIsRequired(checked);
-                  if (activeNodePos !== null && editorRef.current) {
-                    const node = editorRef.current.state.doc.nodeAt(activeNodePos);
-                    if (node) {
-                      editorRef.current.view.dispatch(
-                        editorRef.current.state.tr.setNodeMarkup(activeNodePos, null, {
-                          ...node.attrs,
-                          required: checked,
-                        })
-                      );
-                    }
+            {activeNodeType && TURN_INTO_TARGETS[activeNodeType] && (
+              <div className="px-2 py-1.5 border-b border-zinc-100 mb-1">
+                <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+                  {TURN_INTO_TARGETS[activeNodeType].label}
+                </span>
+              </div>
+            )}
+
+            {activeNodeType && TURN_INTO_TARGETS[activeNodeType]?.group === "question" && (
+              <>
+                <div className="flex items-center justify-between px-2 py-2">
+                  <span className="text-zinc-700">Required</span>
+                  <Switch.Root
+                    checked={isRequired}
+                    onCheckedChange={(checked) => {
+                      setIsRequired(checked);
+                      if (activeNodePos !== null && editorRef.current) {
+                        const node = editorRef.current.state.doc.nodeAt(activeNodePos);
+                        if (node) {
+                          editorRef.current.view.dispatch(
+                            editorRef.current.state.tr.setNodeMarkup(activeNodePos, null, {
+                              ...node.attrs,
+                              required: checked,
+                            })
+                          );
+                        }
+                      }
+                    }}
+                    className="w-10 h-6 bg-zinc-200 rounded-full relative data-[state=checked]:bg-blue-500 outline-none cursor-pointer shadow-inner transition-colors"
+                  >
+                    <Switch.Thumb className="block w-4 h-4 bg-white rounded-full transition-transform duration-100 translate-x-1 will-change-transform data-[state=checked]:translate-x-5 shadow-sm" />
+                  </Switch.Root>
+                </div>
+                
+                <div className="h-px bg-zinc-100 my-1 mx-2" />
+              </>
+            )}
+
+            {/* Turn Into — hover to reveal submenu */}
+            {activeNodeType && isConvertibleBlock(activeNodeType) && (
+              <div
+                className="relative"
+                onMouseEnter={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  if (window.innerHeight - rect.bottom < 300) {
+                    setMenuVerticalAlign("bottom");
+                  } else {
+                    setMenuVerticalAlign("top");
                   }
+                  setTurnIntoOpen(true);
                 }}
-                className="w-10 h-6 bg-zinc-200 rounded-full relative data-[state=checked]:bg-blue-500 outline-none cursor-pointer shadow-inner transition-colors"
+                onMouseLeave={() => setTurnIntoOpen(false)}
               >
-                <Switch.Thumb className="block w-4 h-4 bg-white rounded-full transition-transform duration-100 translate-x-1 will-change-transform data-[state=checked]:translate-x-5 shadow-sm" />
-              </Switch.Root>
-            </div>
-            
-            <div className="h-px bg-zinc-100 my-1 mx-2" />
+                <button
+                  className={`flex items-center justify-between px-2 py-1.5 rounded text-zinc-700 transition-colors w-full text-left ${
+                    turnIntoOpen ? "bg-zinc-100" : "hover:bg-zinc-100"
+                  }`}
+                >
+                  <span className="flex items-center gap-2"><RefreshCw size={16} /> Turn into</span>
+                  <ChevronRight size={14} className="text-zinc-400" />
+                </button>
+
+                {/* Hover submenu — floats to the right */}
+                {turnIntoOpen && (
+                  <div className={`absolute left-full pl-1 z-[70] ${menuVerticalAlign === "bottom" ? "bottom-0" : "top-0"}`}>
+                    <div className="w-56 p-1.5 rounded-xl border border-zinc-200 bg-white shadow-xl max-h-[400px] overflow-y-auto turn-into-list">
+                      {/* Basic blocks */}
+                      <div className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider px-2 pt-1 pb-1">Basic</div>
+                      {Object.entries(TURN_INTO_TARGETS)
+                        .filter(([, t]) => t.group === "basic")
+                        .map(([key, target]) => {
+                          const isCurrent = key === activeNodeType;
+                          return (
+                            <button
+                              key={key}
+                              disabled={isCurrent}
+                              className={`flex items-center gap-3 px-2 py-1.5 rounded w-full text-left transition-colors ${
+                                isCurrent ? "bg-blue-50 text-blue-600 cursor-default" : "text-zinc-700 hover:bg-zinc-100"
+                              }`}
+                              onClick={() => !isCurrent && handleTurnInto(key)}
+                            >
+                              <span className={`flex items-center justify-center w-6 h-6 rounded border ${
+                                isCurrent ? "border-blue-200 bg-blue-100" : "border-zinc-200 bg-zinc-50"
+                              }`}>
+                                {TURN_INTO_ICONS[key]}
+                              </span>
+                              <span className="flex-1 text-sm">{target.label}</span>
+                              {isCurrent && <span className="text-[10px] font-semibold text-blue-400 uppercase">Current</span>}
+                            </button>
+                          );
+                        })}
+
+                      <div className="h-px bg-zinc-100 mx-2 my-1" />
+
+                      {/* Question blocks */}
+                      <div className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider px-2 pt-1 pb-1">Question</div>
+                      {Object.entries(TURN_INTO_TARGETS)
+                        .filter(([, t]) => t.group === "question")
+                        .map(([key, target]) => {
+                          const isCurrent = key === activeNodeType;
+                          return (
+                            <button
+                              key={key}
+                              disabled={isCurrent}
+                              className={`flex items-center gap-3 px-2 py-1.5 rounded w-full text-left transition-colors ${
+                                isCurrent ? "bg-blue-50 text-blue-600 cursor-default" : "text-zinc-700 hover:bg-zinc-100"
+                              }`}
+                              onClick={() => !isCurrent && handleTurnInto(key)}
+                            >
+                              <span className={`flex items-center justify-center w-6 h-6 rounded border ${
+                                isCurrent ? "border-blue-200 bg-blue-100" : "border-zinc-200 bg-zinc-50"
+                              }`}>
+                                {TURN_INTO_ICONS[key]}
+                              </span>
+                              <span className="flex-1 text-sm">{target.label}</span>
+                              {isCurrent && <span className="text-[10px] font-semibold text-blue-400 uppercase">Current</span>}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             
             <button 
               className="flex items-center justify-between px-2 py-1.5 hover:bg-zinc-100 rounded text-zinc-700 transition-colors w-full text-left"

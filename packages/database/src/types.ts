@@ -78,6 +78,7 @@ export interface Database {
           created_by: string | null
           created_at: string | null
           updated_at: string | null
+          access_open: boolean | null
         }
         Insert: {
           id?: string
@@ -87,6 +88,7 @@ export interface Database {
           created_by?: string | null
           created_at?: string | null
           updated_at?: string | null
+          access_open?: boolean | null
         }
         Update: {
           id?: string
@@ -96,6 +98,7 @@ export interface Database {
           created_by?: string | null
           created_at?: string | null
           updated_at?: string | null
+          access_open?: boolean | null
         }
         Relationships: []
       }
@@ -107,6 +110,7 @@ export interface Database {
           content: Json
           version: number
           created_at: string | null
+          created_by?: string | null
         }
         Insert: {
           id?: string
@@ -115,6 +119,7 @@ export interface Database {
           content: Json
           version: number
           created_at?: string | null
+          created_by?: string | null
         }
         Update: {
           id?: string
@@ -123,6 +128,7 @@ export interface Database {
           content?: Json
           version?: number
           created_at?: string | null
+          created_by?: string | null
         }
         Relationships: []
       }
@@ -148,7 +154,7 @@ export interface Database {
         Row: {
           id: string
           form_id: string
-          form_version_id: string
+          form_version_id: string | number
           submitted_by: string | null
           data: Json
           filled_at: string | null
@@ -157,7 +163,7 @@ export interface Database {
         Insert: {
           id?: string
           form_id: string
-          form_version_id: string
+          form_version_id: string | number
           submitted_by?: string | null
           data: Json
           filled_at?: string | null
@@ -166,7 +172,7 @@ export interface Database {
         Update: {
           id?: string
           form_id?: string
-          form_version_id?: string
+          form_version_id?: string | number
           submitted_by?: string | null
           data?: Json
           filled_at?: string | null

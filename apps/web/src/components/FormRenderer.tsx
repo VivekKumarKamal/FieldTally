@@ -404,8 +404,8 @@ function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors, visib
           <div className="phone-answer-title outline-none">{renderInlineContent(node.content)}</div>
           {required && <span className="required-badge">*</span>}
         </div>
-        <div style={{ display: "flex", alignItems: "center", borderBottom: "1.5px solid #d1d5db", gap: 4 }}>
-          <span style={{ color: "#6b7280", fontSize: "0.9em", userSelect: "none" }}>+</span>
+        <div className={`phone-answer-field ${hasError ? "preview-error-field" : ""}`}>
+          <span className="phone-cc-prefix">+</span>
           <input
             type="text"
             inputMode="numeric"
@@ -415,11 +415,12 @@ function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors, visib
               const cc = e.target.value.replace(/\D/g, "");
               updateAnswer(id, `+${cc} ${storedNum}`);
             }}
-            style={{ width: `${Math.max(1, storedCC.length)}ch`, minWidth: "1ch", border: "none", outline: "none", color: "#3f3f46", fontSize: "0.9em", background: "transparent", padding: "4px 0" }}
+            className="phone-cc-input"
+            style={{ width: `${Math.max(1, storedCC.length)}ch` }}
           />
-          <span style={{ color: "#d1d5db", userSelect: "none" }}>|</span>
+          <span className="phone-separator">|</span>
           <input
-            className={`block-placeholder-input ${hasError ? "preview-error-field" : ""}`}
+            className="phone-num-input"
             type="tel"
             inputMode="numeric"
             placeholder={placeholder || ""}
@@ -429,7 +430,6 @@ function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors, visib
               const num = e.target.value.replace(/\D/g, "").slice(0, 10);
               updateAnswer(id, `+${storedCC} ${num}`);
             }}
-            style={{ color: "#3f3f46", border: "none", flex: 1 }}
           />
         </div>
         {hasError && <p className="text-red-500 text-xs mt-1 font-medium">{errors[id]}</p>}

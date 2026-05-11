@@ -151,8 +151,8 @@ export const suggestionItems = createSuggestionItems([
       editor
         .chain()
         .focus()
-        .insertContentAt(range, checkboxesContent)
-        .setTextSelection(range.from + 2)
+        .deleteRange(range)
+        .insertContent(checkboxesContent)
         .run();
     },
   },
@@ -165,8 +165,8 @@ export const suggestionItems = createSuggestionItems([
       editor
         .chain()
         .focus()
-        .insertContentAt(range, multipleChoiceContent)
-        .setTextSelection(range.from + 2)
+        .deleteRange(range)
+        .insertContent(multipleChoiceContent)
         .run();
     },
   },

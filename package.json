@@ -23,5 +23,10 @@
   ],
   "dependencies": {
     "lucide-react": "^1.8.0"
+  },
+  "overrides": {
+    "@tiptap/core": "2.27.2",
+    "@tiptap/pm": "2.27.2",
+    "@tiptap/extension-unique-id": "2.27.2"
   }
 }

@@ -93,10 +93,30 @@ export function evaluateCondition(cond: LogicCondition, answer: any): boolean {
 
 export function evaluateLogic(blocks: LogicBlockNode[], answers: Record<string, any>): EvaluateResult {
   const visibility: Record<string, boolean> = {};
+  
+  // By default, all non-logic blocks are visible
   blocks.forEach(b => {
-    if (b.type !== "logicBlock") visibility[b.id] = true; // all visible by default
+    if (b.type !== "logicBlock") visibility[b.id] = true; 
   });
   
+  // If a block is the target of a "show" rule, its default state should be hidden
+  blocks.forEach(b => {
+    const rulesToRun: LogicRule[] = [];
+    if (b.type === "logicBlock" && b.rule) {
+      rulesToRun.push(b.rule);
+    } else if (b.logic && b.logic.length > 0) {
+      rulesToRun.push(...b.logic);
+    }
+
+    rulesToRun.forEach(rule => {
+      if (rule.action.type === "show" && rule.action.targets) {
+        rule.action.targets.forEach(t => {
+          visibility[t] = false;
+        });
+      }
+    });
+  });
+
   let jumpTo: string | null = null;
   let end = false;
 
