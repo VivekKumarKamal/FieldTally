@@ -1,5 +1,4 @@
 import {
-  TiptapImage,
   TiptapLink,
   UpdatedImage,
   TaskList,
@@ -70,14 +69,6 @@ export const RequiredAttribute = Extension.create({
             default: [],
             renderHTML: attributes => ({ "data-logic": JSON.stringify(attributes.logic || []) }),
             parseHTML: element => JSON.parse(element.getAttribute("data-logic") || "[]"),
-          },
-          id: {
-            default: null,
-            renderHTML: attributes => {
-              if (!attributes.id) return {};
-              return { "data-id": attributes.id };
-            },
-            parseHTML: element => element.getAttribute("data-id"),
           }
         },
       },
@@ -278,7 +269,6 @@ export const defaultExtensions = [
   starterKit,
   placeholder,
   tiptapLink,
-  TiptapImage,
   UpdatedImage,
   taskList,
   taskItem,

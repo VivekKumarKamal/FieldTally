@@ -14,7 +14,7 @@ import {
   handleCommandNavigation,
 } from "novel";
 import type { Editor as TiptapEditor } from "@tiptap/core";
-import { TextSelection } from "@tiptap/pm/state";
+import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import {
   Trash, Plus, GripVertical, Copy, Bold, Italic, Strikethrough,
   Underline as UnderlineIcon, Link as LinkIcon,
@@ -62,7 +62,6 @@ const initialContent = {
   content: [
     {
       type: "paragraph",
-      content: [{ type: "text", text: "" }],
     },
   ],
 };
@@ -80,6 +79,14 @@ const BLOCK_TYPES_WITH_IDS = new Set([
   "multipleChoiceBlock",
   "logicBlock",
 ]);
+
+type ClipboardCapableView = TiptapEditor["view"] & {
+  serializeForClipboard?: (slice: ReturnType<NodeSelection["content"]>) => {
+    dom: HTMLElement;
+    text: string;
+  };
+  dragging?: { slice: ReturnType<NodeSelection["content"]>; move: boolean };
+};
 
 
 const cloneBlockWithFreshIds = (json: any): any => {
@@ -252,66 +259,60 @@ export default function Home() {
     lastSelectionRef.current = editor.state.selection.from;
   };
 
-  // Fix: GlobalDragHandle resolves child nodes (e.g. shortAnswerTitle, checkboxTitle)
-  // instead of their parent wrapper blocks. This capture-phase listener fires BEFORE
-  // GlobalDragHandle's handler, detects any custom nested block, corrects the
-  // selection to the top-level wrapper, and rebuilds the drag data.
+  const getHandleTargetPos = () => {
+    if (!editorRef.current) return null;
+    const handle = document.querySelector(".custom-drag-handle");
+    if (!handle) return null;
+
+    const editorEl = document.querySelector('.ProseMirror');
+    if (!editorEl) return null;
+    const editorRect = editorEl.getBoundingClientRect();
+    const handleRect = handle.getBoundingClientRect();
+    const pos = editorRef.current.view.posAtCoords({
+      left: editorRect.left + 20,
+      top: handleRect.top + 10,
+    });
+    if (!pos) return null;
+
+    const doc = editorRef.current.state.doc;
+    const resolvedPos = Math.max(0, Math.min(pos.inside >= 0 ? pos.inside : pos.pos, doc.content.size));
+    const $pos = doc.resolve(resolvedPos);
+    const blockPos = $pos.depth >= 1 ? $pos.before(1) : resolvedPos;
+    return doc.nodeAt(blockPos) ? blockPos : null;
+  };
+
+  const selectBlockAt = (pos: number) => {
+    const editor = editorRef.current;
+    if (!editor) return null;
+    const selection = NodeSelection.create(editor.state.doc, pos);
+    const tr = editor.state.tr.setSelection(selection);
+    editor.view.dispatch(tr);
+    return selection;
+  };
+
   useEffect(() => {
     const handle = document.querySelector(".custom-drag-handle");
     if (!handle) return;
 
-    // Node type names that are multi-node wrapper blocks (draggable as a unit)
-    const NESTED_BLOCK_TYPES = new Set(["checkboxBlock", "shortAnswerBlock"]);
-
-    const fixNestedBlockDrag = (e: Event) => {
+    const dragWholeBlock = (e: Event) => {
       const editor = editorRef.current;
-      if (!editor || !e.isTrusted) return;
-
       const dragEvent = e as DragEvent;
-      // Use the editor's content area X instead of offset from handle rect.
-      // This reliably hits the block content regardless of handle width/position.
-      const editorEl = document.querySelector('.ProseMirror');
-      if (!editorEl) return;
-      const editorRect = editorEl.getBoundingClientRect();
-      const handleRect = handle.getBoundingClientRect();
-      const pos = editor.view.posAtCoords({
-        left: editorRect.left + 20,
-        top: handleRect.top + 10,
-      });
-      if (!pos) return;
+      if (!editor || !dragEvent.dataTransfer) return;
 
-      const resolved = pos.inside >= 0 ? pos.inside : pos.pos;
-      const $pos = editor.state.doc.resolve(resolved);
+      const blockPos = getHandleTargetPos();
+      if (blockPos === null) return;
 
-      // Walk up to find a nested wrapper block ancestor (depth 1 = top-level)
-      let blockPos = -1;
-      for (let d = $pos.depth; d >= 1; d--) {
-        if (NESTED_BLOCK_TYPES.has($pos.node(d).type.name)) {
-          blockPos = $pos.before(d);
-          break;
-        }
-      }
-
-      // Not inside a nested block — let GlobalDragHandle handle it normally
-      if (blockPos === -1) return;
-
-      // Stop GlobalDragHandle's handler from running (it would select the child)
       e.stopImmediatePropagation();
+      const selection = selectBlockAt(blockPos);
+      if (!selection) return;
 
-      if (!dragEvent.dataTransfer) return;
-
-      // Select the entire wrapper block
-      const { NodeSelection } = require("@tiptap/pm/state");
-      const sel = NodeSelection.create(editor.state.doc, blockPos);
-      editor.view.dispatch(editor.state.tr.setSelection(sel));
-
-      // Build drag data from the corrected selection
-      const slice = editor.state.selection.content();
+      const slice = selection.content();
       const dom = document.createElement("div");
-
       let text = "";
+
       try {
-        const result = (editor.view as any).serializeForClipboard(slice);
+        const result = (editor.view as ClipboardCapableView).serializeForClipboard?.(slice);
+        if (!result) throw new Error("Clipboard serialization is unavailable");
         dom.innerHTML = result.dom.innerHTML;
         text = result.text;
       } catch {
@@ -332,36 +333,15 @@ export default function Home() {
         dragEvent.dataTransfer.setDragImage(blockDOM, 0, 0);
       }
 
-      (editor.view as any).dragging = { slice, move: true };
+      (editor.view as ClipboardCapableView).dragging = { slice, move: true };
     };
 
-    // Capture phase = fires BEFORE GlobalDragHandle's bubbling-phase handler
-    handle.addEventListener("dragstart", fixNestedBlockDrag, true);
-    return () => handle.removeEventListener("dragstart", fixNestedBlockDrag, true);
+    handle.addEventListener("dragstart", dragWholeBlock, true);
+    return () => handle.removeEventListener("dragstart", dragWholeBlock, true);
   }, [editorKey]);
 
-  // Helper: resolve the top-level block (depth 1) under the drag handle.
-  // Always walks up to depth 1 so nested blocks (checkboxBlock, shortAnswerBlock)
-  // are selected as a whole unit, not their child nodes.
   const getHoveredNodePos = () => {
-    if (!editorRef.current) return null;
-    const handle = document.querySelector(".custom-drag-handle");
-    if (!handle) return null;
-    // Use the editor content X so we reliably hit the block, regardless of
-    // how far left/right the handle itself is positioned.
-    const editorEl = document.querySelector('.ProseMirror');
-    if (!editorEl) return null;
-    const editorRect = editorEl.getBoundingClientRect();
-    const handleRect = handle.getBoundingClientRect();
-    const pos = editorRef.current.view.posAtCoords({
-      left: editorRect.left + 20,
-      top: handleRect.top + 10,
-    });
-    if (!pos || pos.inside < 0) return null;
-
-    // Always resolve to depth 1 (direct child of doc = top-level block)
-    const $pos = editorRef.current.state.doc.resolve(pos.inside);
-    return $pos.depth >= 1 ? $pos.before(1) : pos.inside;
+    return getHandleTargetPos();
   };
 
   const deleteBlock = (targetPos?: number) => {
@@ -369,12 +349,8 @@ export default function Home() {
     if (!editor) return;
     const pos = targetPos ?? getHoveredNodePos();
     if (pos !== null) {
-      // Import NodeSelection dynamically or use tiptap core state
-      const { NodeSelection } = require("@tiptap/pm/state");
-      const nodeSelection = NodeSelection.create(editor.state.doc, pos);
-      editor.view.dispatch(
-        editor.state.tr.setSelection(nodeSelection).deleteSelection()
-      );
+      selectBlockAt(pos);
+      editor.commands.deleteSelection();
     }
   };
 
@@ -443,6 +419,26 @@ export default function Home() {
     setUserId(null);
   };
 
+  const focusTextBlockAt = (pos: number) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const focusPos = Math.max(1, Math.min(pos + 1, editor.state.doc.content.size));
+    const tr = editor.state.tr.setSelection(TextSelection.near(editor.state.doc.resolve(focusPos), 1));
+    editor.view.dispatch(tr);
+    editor.view.focus();
+  };
+
+  const getLastTopLevelBlock = () => {
+    const doc = editorRef.current?.state.doc;
+    const node = doc?.lastChild;
+    if (!doc || !node) return null;
+
+    return {
+      pos: doc.content.size - node.nodeSize,
+      isEmptyTextBlock: node.isTextblock && node.textContent.trim() === "",
+    };
+  };
+
   const handleEmptyAreaClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
     if (target.closest("button") || target.closest("input") || target.closest("a") || target.closest("[role='menu']") || target.closest("[data-radix-popper-content-wrapper]") || target.closest("textarea") || target.closest("select")) {
@@ -459,12 +455,16 @@ export default function Home() {
 
     const blockEls = Array.from(editorEl.children).filter((child): child is HTMLElement => child instanceof HTMLElement);
 
-    // Check if the click is below the last block — if so, create a new paragraph
     const lastBlock = blockEls[blockEls.length - 1];
     if (lastBlock) {
       const lastRect = lastBlock.getBoundingClientRect();
       if (e.clientY > lastRect.bottom + 4) {
-        // Click is below all content — append a new paragraph and focus it
+        const lastDocBlock = getLastTopLevelBlock();
+        if (lastDocBlock?.isEmptyTextBlock) {
+          focusTextBlockAt(lastDocBlock.pos);
+          return;
+        }
+
         const endPos = editor.state.doc.content.size;
         editor.commands.insertContentAt(endPos, { type: "paragraph" });
         const newEndPos = editor.state.doc.content.size - 1;
@@ -488,10 +488,7 @@ export default function Home() {
 
     if (nearestBlock) {
       const pos = editor.view.posAtDOM(nearestBlock, 0);
-      const focusPos = Math.max(1, Math.min(pos + 1, editor.state.doc.content.size));
-      const tr = editor.state.tr.setSelection(TextSelection.near(editor.state.doc.resolve(focusPos), 1));
-      editor.view.dispatch(tr);
-      editor.view.focus();
+      focusTextBlockAt(pos);
       return;
     }
 

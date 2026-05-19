@@ -1,14 +1,16 @@
 import { Node, mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent } from "@tiptap/react";
-import { TextSelection } from "@tiptap/pm/state";
+import type { NodeViewProps } from "@tiptap/react";
 import React, { useRef, useState } from "react";
-import { Tooltip } from "../../components/Tooltip";
+import { inlineQuestionEnterShortcut, placeholderAttribute, RequiredBadge } from "./simpleAnswerBlock";
 
 const MIN_ROWS = 3;
 const ROW_HEIGHT_PX = 24; // approx line height in px
+type LongAnswerAttrs = { placeholder?: string; required?: boolean; rows?: number };
 
-const LongAnswerComponent = (props: any) => {
-  const [rows, setRows] = useState<number>(props.node.attrs.rows ?? MIN_ROWS);
+const LongAnswerComponent = (props: NodeViewProps) => {
+  const attrs = props.node.attrs as LongAnswerAttrs;
+  const [rows, setRows] = useState<number>(attrs.rows ?? MIN_ROWS);
   const dragStartY = useRef<number | null>(null);
   const dragStartRows = useRef<number>(rows);
 
@@ -43,35 +45,19 @@ const LongAnswerComponent = (props: any) => {
     >
       <div className="question-title-row">
         <NodeViewContent as="div" className="long-answer-title outline-none" />
-        {props.node.attrs.required && (
-          <Tooltip content={<span className="text-zinc-300">Required<span className="text-white font-bold ml-1">*</span></span>}>
-            <span
-              className="required-badge"
-              contentEditable={false}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                props.updateAttributes({ required: false });
-              }}
-            >
-              *
-            </span>
-          </Tooltip>
-        )}
+        {attrs.required && <RequiredBadge updateAttributes={props.updateAttributes} />}
       </div>
 
-      {/* Resizable textarea */}
       <div className="long-answer-field-wrapper" contentEditable={false}>
         <textarea
           className="block-placeholder-input long-answer-textarea"
           placeholder="Type placeholder text"
-          value={props.node.attrs.placeholder || ""}
+          value={attrs.placeholder || ""}
           rows={rows}
           onChange={(e) => props.updateAttributes({ placeholder: e.target.value })}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         />
-        {/* Custom resize handle */}
         <div
           className="long-answer-resize-handle"
           onMouseDown={handleResizeDragStart}
@@ -94,11 +80,7 @@ export const LongAnswerBlock = Node.create({
 
   addAttributes() {
     return {
-      placeholder: {
-        default: "",
-        renderHTML: attributes => ({ "data-placeholder": attributes.placeholder || "" }),
-        parseHTML: element => element.getAttribute("data-placeholder") || "",
-      },
+      placeholder: placeholderAttribute,
       rows: {
         default: MIN_ROWS,
         renderHTML: attributes => ({ "data-rows": attributes.rows }),
@@ -122,25 +104,7 @@ export const LongAnswerBlock = Node.create({
   addKeyboardShortcuts() {
     return {
       Enter: () => {
-        const { state } = this.editor;
-        const { $from, empty } = state.selection;
-
-        if (!empty || $from.parent.type.name !== "longAnswerBlock") return false;
-
-        const start = $from.before();
-        const end = $from.after();
-
-        if ($from.parent.textContent.trim() === "") {
-          const tr = state.tr.replaceWith(start, end, state.schema.nodes.paragraph.create());
-          tr.setSelection(TextSelection.create(tr.doc, start + 1));
-          this.editor.view.dispatch(tr);
-          return true;
-        } else {
-          const tr = state.tr.insert(end, state.schema.nodes.paragraph.create());
-          tr.setSelection(TextSelection.create(tr.doc, end + 1));
-          this.editor.view.dispatch(tr);
-          return true;
-        }
+        return inlineQuestionEnterShortcut(this.editor, "longAnswerBlock");
       },
     };
   },

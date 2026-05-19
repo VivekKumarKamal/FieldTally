@@ -195,10 +195,6 @@ export const MultipleChoiceOption = Node.create({
   },
 });
 
-// ── MultipleChoiceBlock: the outer wrapper card that holds the title + options ──
-// draggable: true lets ProseMirror treat it as a single draggable unit.
-// addProseMirrorPlugins intercepts dragstart to ensure the WHOLE block is
-// selected when dragging (not just an inner child node like multipleChoiceTitle).
 export const MultipleChoiceBlock = Node.create({
   name: "multipleChoiceBlock",
   group: "block",
@@ -215,39 +211,6 @@ export const MultipleChoiceBlock = Node.create({
       "div",
       mergeAttributes(HTMLAttributes, { "data-type": "multiple-choice-block" }),
       0,
-    ];
-  },
-
-  // Fix: GlobalDragHandle may resolve a child (multipleChoiceTitle) instead of the
-  // parent multipleChoiceBlock. This plugin intercepts dragstart and corrects the
-  // selection to the full block so all options move together on drag.
-  addProseMirrorPlugins() {
-    const { Plugin, PluginKey, NodeSelection } = require("@tiptap/pm/state");
-    return [
-      new Plugin({
-        key: new PluginKey("multipleChoiceBlockDrag"),
-        props: {
-          handleDOMEvents: {
-            dragstart: (view: any) => {
-              const { state } = view;
-              if (state.selection instanceof NodeSelection) {
-                const $pos = state.doc.resolve(state.selection.from);
-                for (let d = $pos.depth; d >= 1; d--) {
-                  if ($pos.node(d).type.name === "multipleChoiceBlock") {
-                    const blockPos = $pos.before(d);
-                    if (blockPos !== state.selection.from) {
-                      const sel = NodeSelection.create(state.doc, blockPos);
-                      view.dispatch(state.tr.setSelection(sel));
-                    }
-                    break;
-                  }
-                }
-              }
-              return false;
-            },
-          },
-        },
-      }),
     ];
   },
 });
