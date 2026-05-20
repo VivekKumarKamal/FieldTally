@@ -21,7 +21,7 @@ import {
   RefreshCw, ChevronRight,
   Type, Hash, Mail, Phone, Link2, Calendar, Clock, AlignLeft,
   CheckSquare, CircleDot,
-  Heading1, Heading2, Heading3, List, ListOrdered, Cloud, Check
+  Heading1, Heading2, Heading3, List, ListOrdered, Cloud, Check, History, CloudUpload, CloudOff, CloudCheck
 } from "lucide-react";
 import * as Popover from "@radix-ui/react-popover";
 import * as Switch from "@radix-ui/react-switch";
@@ -165,6 +165,10 @@ export default function Home() {
   const [formTitle, setFormTitle] = useState("");
   const [publishUrl, setPublishUrl] = useState<string | null>(null);
   const [formVersion, setFormVersion] = useState<number | null>(null);
+  const [latestPublishedSchema, setLatestPublishedSchema] = useState<any>(null);
+  const [latestPublishedTitle, setLatestPublishedTitle] = useState<string | null>(null);
+  const [versionHistory, setVersionHistory] = useState<any[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
   const [userProfile, setUserProfile] = useState<{ email?: string, avatar_url?: string } | null>(null);
   const [copiedUrl, setCopiedUrl] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -177,6 +181,8 @@ export default function Home() {
       setEditorInitialData(result.schema);
       setFormTitle(result.title);
       setFormVersion(result.version || null);
+      setLatestPublishedSchema(result.latestPublishedSchema || null);
+      setLatestPublishedTitle(result.latestPublishedTitle || null);
       if (result.shouldRemount) setEditorKey(k => k + 1);
       setIsLoaded(true);
     });
@@ -402,12 +408,21 @@ export default function Home() {
     if (!editor) return;
     const json = editor.getJSON();
 
+    const hasChanges = JSON.stringify(json) !== JSON.stringify(latestPublishedSchema) || formTitle !== latestPublishedTitle;
+    if (!hasChanges) {
+      setSaveStatus("saved");
+      alert("No changes detected since last publish.");
+      return;
+    }
+
     const result = await publishForm(formId, userId, json, formTitle);
     
     if (result.ok) {
       setSaveStatus("saved");
       setPublishUrl(result.url || null);
       setFormVersion(prev => (prev || 0) + 1);
+      setLatestPublishedSchema(json);
+      setLatestPublishedTitle(formTitle);
     } else {
       setSaveStatus("error");
       alert(`Publish failed: ${result.error}`);
@@ -498,66 +513,105 @@ export default function Home() {
     editor.commands.focus(endPos + 1);
   };
 
+  const loadVersionHistory = async () => {
+    if (!formId) return;
+    const { data } = await supabase.from('form_versions').select('version, created_at, content, title').eq('form_id', formId).order('version', { ascending: false });
+    if (data) setVersionHistory(data);
+  };
+
+  const handleLoadVersion = (versionData: any) => {
+    setEditorInitialData(versionData.content);
+    setFormTitle(versionData.title);
+    setFormVersion(versionData.version);
+    setEditorKey(k => k + 1);
+  };
+
   return (
     <div className={`min-h-screen w-screen relative ${menuOpen ? 'editor-menu-open' : ''}`} onClick={handleEmptyAreaClick} onMouseMove={() => { if (isKeyboardActive) setIsKeyboardActive(false); }}>
       {/* Top Navigation Bar */}
-      <div className="fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-b border-zinc-200 z-[100] px-6 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <h1 className="font-semibold text-zinc-800">FieldTally</h1>
-          {formVersion !== null && (
-            <span className="text-xs font-medium text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded-full">
-              v{formVersion}
-            </span>
-          )}
-          <div className="h-4 w-px bg-zinc-300"></div>
-          
-          <button 
-            onClick={() => { if (editorRef.current) saveForm(editorRef.current.getJSON()); }}
-            className="group flex items-center gap-2 px-2 py-1 hover:bg-zinc-100 rounded-lg transition-colors cursor-pointer"
-            title="Save draft"
-          >
-            {saveStatus === 'saving' && <Cloud className="w-5 h-5 text-zinc-400 animate-pulse" />}
-            {saveStatus === 'saved' && <Cloud className="w-5 h-5 text-green-500" />}
-            {saveStatus === 'error' && <Cloud className="w-5 h-5 text-red-500" />}
-            {saveStatus === 'idle' && <Cloud className="w-5 h-5 text-zinc-400 group-hover:text-zinc-600 transition-colors" />}
-            
-            <div className="text-sm font-medium">
-              {saveStatus === 'saving' && <span className="text-zinc-500">Saving...</span>}
-              {saveStatus === 'saved' && <span className="text-green-600">Saved</span>}
-              {saveStatus === 'error' && <span className="text-red-500">Error</span>}
+      <div className="fixed top-0 left-0 right-0 h-14 bg-white/70 backdrop-blur-xl border-b border-zinc-200/60 z-[100] px-6 flex items-center justify-between transition-all duration-200">
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 bg-gradient-to-br from-zinc-800 to-zinc-600 rounded flex items-center justify-center shadow-sm">
+               <span className="text-white text-xs font-bold tracking-tighter">FT</span>
             </div>
-          </button>
+            <h1 className="font-semibold text-zinc-800 tracking-tight">FieldTally</h1>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={handleSubmit}
-            className="px-3 py-1.5 text-sm font-medium text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors"
-          >
-            Preview
-          </button>
-          
-          <div className="flex items-center">
-            <button
-              onClick={handlePublish}
-              className={`px-4 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-colors ${publishUrl ? 'rounded-l-lg' : 'rounded-lg'}`}
-            >
-              Publish
-            </button>
-            {publishUrl && (
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(publishUrl);
-                  setCopiedUrl(true);
-                  setTimeout(() => setCopiedUrl(false), 2000);
-                }}
-                title="Copy Link"
-                className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-r-lg border-l border-blue-500/30 transition-colors flex items-center"
+              <button 
+                onClick={() => { if (editorRef.current) saveForm(editorRef.current.getJSON()); }}
+            className="p-1.5 text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 rounded-lg transition-colors cursor-pointer mr-1"
+            title={saveStatus === 'saving' ? "Saving..." : saveStatus === 'saved' ? "Saved" : saveStatus === 'error' ? "Error saving" : "Save draft"}
               >
-                {copiedUrl ? <Check size={16} /> : <LinkIcon size={16} />}
+            {saveStatus === 'saving' && <CloudUpload className="w-5 h-5 text-blue-500 animate-pulse" />}
+            {saveStatus === 'saved' && <CloudCheck className="w-5 h-5 text-green-500 hover:text-green-600" />}
+            {saveStatus === 'error' && <CloudOff className="w-5 h-5 text-red-500 hover:text-red-800" />}
+            {saveStatus === 'idle' && <CloudCheck className="w-5 h-5 text-zinc-400 hover:text-zinc-800" />}
               </button>
+
+            {formVersion !== null && (
+            <span className="text-xs font-medium text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded-full border border-zinc-200">
+              v{formVersion}
+            </span>
+          )}
+
+          {formId && formVersion !== null && (
+                <Popover.Root open={showHistory} onOpenChange={(open) => { setShowHistory(open); if (open) loadVersionHistory(); }}>
+                  <Popover.Trigger asChild>
+                <button className="p-1.5 text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 rounded-lg transition-colors" title="Version History">
+                  <History className="w-5 h-5" />
+                    </button>
+                  </Popover.Trigger>
+              <Popover.Content align="center" sideOffset={8} className="w-64 p-2 rounded-xl border border-zinc-200 bg-white shadow-xl z-[150] outline-none max-h-80 overflow-y-auto">
+                <div className="px-3 py-2 border-b border-zinc-100 mb-2">
+                  <p className="text-sm font-semibold text-zinc-900">Version History</p>
+                    </div>
+                        {versionHistory.map(v => (
+                          <button 
+                            key={v.version}
+                            onClick={() => { handleLoadVersion(v); setShowHistory(false); }}
+                    className="w-full text-left px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 rounded-lg transition-colors flex justify-between items-center"
+                          >
+                    <span>Version {v.version}</span>
+                    <span className="text-xs text-zinc-400">{new Date(v.created_at).toLocaleDateString()}</span>
+                          </button>
+                        ))}
+                  </Popover.Content>
+                </Popover.Root>
             )}
-          </div>
+
+          <div className="h-4 w-px bg-zinc-300 mx-1"></div>
+
+            <button
+              onClick={handleSubmit}
+            className="px-3 py-1 text-sm font-medium text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors"
+            >
+              Preview
+            </button>
+            
+          <div className="flex items-center">
+              <button
+                onClick={handlePublish}
+              className={`px-4 py-1 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 shadow-sm transition-colors ${formId && formVersion !== null ? 'rounded-lg' : 'rounded-lg'}`}
+              >
+                Publish
+              </button>
+              {formId && formVersion !== null && (
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(window.location.origin + '/s/' + formId);
+                      setCopiedUrl(true);
+                      setTimeout(() => setCopiedUrl(false), 2000);
+                    }}
+                title="Copy Link"
+                className="ml-2 px-2 py-2 text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 rounded-lg transition-colors flex justify-between items-center"
+                  >
+                {copiedUrl ? <Check size={16} /> : <LinkIcon size={16} />}
+                  </button>
+              )}
+            </div>
           
           <div className="w-px h-4 bg-zinc-300 mx-2"></div>
 

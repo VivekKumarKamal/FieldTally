@@ -35,6 +35,8 @@ export interface LoadFormResult {
   /** True if the editor should remount (remote data was newer) */
   shouldRemount: boolean;
   version?: number | null;
+  latestPublishedSchema?: any;
+  latestPublishedTitle?: string | null;
 }
 
 /**
@@ -61,15 +63,20 @@ export async function loadForm(initialContent: any): Promise<LoadFormResult> {
   let version: number | null = null;
 
   // 2. For logged-in users, sync with Supabase
+  let latestPublishedSchema = null;
+  let latestPublishedTitle = null;
+
   if (user) {
     try {
       const [{ data }, { data: versionData }] = await Promise.all([
         supabase.from("forms").select("draft_schema, updated_at").eq("id", currentId).single(),
-        supabase.from("form_versions").select("version").eq("form_id", currentId).order("version", { ascending: false }).limit(1).maybeSingle()
+        supabase.from("form_versions").select("version, content, title").eq("form_id", currentId).order("version", { ascending: false }).limit(1).maybeSingle()
       ]);
 
       if (versionData) {
         version = versionData.version;
+        latestPublishedSchema = versionData.content;
+        latestPublishedTitle = versionData.title;
       }
 
       if (data?.draft_schema) {
@@ -103,7 +110,16 @@ export async function loadForm(initialContent: any): Promise<LoadFormResult> {
     }
   }
 
-  return { formId: currentId, userId, schema, title, shouldRemount, version };
+  return { 
+    formId: currentId, 
+    userId, 
+    schema, 
+    title, 
+    shouldRemount, 
+    version, 
+    latestPublishedSchema: user ? (version ? latestPublishedSchema : null) : null,
+    latestPublishedTitle: user ? (version ? latestPublishedTitle : null) : null
+  };
 }
 
 // ── Save draft ──
@@ -231,8 +247,8 @@ export async function publishForm(
       updated_at: now,
     }));
 
-    // If for some reason we couldn't get the version ID, fallback gracefully
-    const url = versionId ? `${window.location.origin}/s/${versionId}` : `${window.location.origin}/s/error-no-version`;
+    // If for some reason we couldn't get the form ID, fallback gracefully
+    const url = formId ? `${window.location.origin}/s/${formId}` : `${window.location.origin}/s/error-no-form`;
     return { ok: true, url };
   } catch (err: any) {
     console.error("Publish failed (exception):", err);

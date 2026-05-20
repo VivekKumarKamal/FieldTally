@@ -1,19 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
 import FormRenderer from "../../../components/FormRenderer";
 
-export default function SubmissionPage() {
+function SubmissionPageContent() {
   const router = useRouter();
   const params = useParams()!;
-  const versionId = params?.versionId as string;
+  const searchParams = useSearchParams();
+  const formId = params?.formId as string;
+  const versionQuery = searchParams?.get("version");
   
   const [formSchema, setFormSchema] = useState<any>(null);
   const [formTitle, setFormTitle] = useState("");
-  const [formId, setFormId] = useState<string>("");
+  const [formVersionId, setFormVersionId] = useState<string>("");
   const [formVersionNum, setFormVersionNum] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -22,40 +24,21 @@ export default function SubmissionPage() {
 
   useEffect(() => {
     async function loadForm() {
-      if (!versionId) return;
+      if (!formId) return;
       
       try {
-        // Fetch the specific version requested
-        const { data: currentVersion, error: versionError } = await supabase
-          .from('form_versions')
-          .select('id, form_id, title, content, version')
-          .eq('id', versionId)
+        // Fetch form status to ensure it's accessible and get its data
+        const { data: form, error: formError } = await supabase
+          .from('forms')
+          .select('id, status, access_open, created_by')
+          .eq('id', formId)
           .single();
-
-        if (versionError || !currentVersion) {
-          setError("Form version not found.");
-          setLoading(false);
-          return;
-        }
-
-        // Fetch form status and latest version info concurrently
-        const [formResult, latestVersionResult] = await Promise.all([
-          supabase.from('forms').select('id, status, access_open, created_by').eq('id', currentVersion.form_id).single(),
-          supabase.from('form_versions')
-            .select('version')
-            .eq('form_id', currentVersion.form_id)
-            .order('version', { ascending: false })
-            .limit(1)
-            .single()
-        ]);
           
-        if (formResult.error || !formResult.data) {
+        if (formError || !form) {
           setError("Parent form not found or you do not have permission to view it.");
           setLoading(false);
           return;
         }
-        
-        const form = formResult.data;
 
         if (form.status !== 'published') {
           setError("This form is not currently published.");
@@ -90,14 +73,47 @@ export default function SubmissionPage() {
           }
         }
 
-        if (latestVersionResult.data && latestVersionResult.data.version > currentVersion.version) {
-          setIsLatestVersion(false);
+        // Fetch latest version info to see if requested version is latest
+        const { data: latestVersionResult, error: latestError } = await supabase.from('form_versions')
+          .select('id, version, title, content')
+          .eq('form_id', formId)
+          .order('version', { ascending: false })
+          .limit(1)
+          .single();
+          
+        if (latestError || !latestVersionResult) {
+           setError("No published versions found for this form.");
+           setLoading(false);
+           return;
         }
 
-        setFormId(currentVersion.form_id);
-        setFormSchema(currentVersion.content);
-        setFormTitle(currentVersion.title);
-        setFormVersionNum(currentVersion.version);
+        let targetVersionData = latestVersionResult;
+
+        if (versionQuery) {
+          const versionNumber = parseInt(versionQuery, 10);
+          if (!isNaN(versionNumber) && versionNumber !== latestVersionResult.version) {
+            const { data: specificVersion, error: specificError } = await supabase
+              .from('form_versions')
+              .select('id, version, title, content')
+              .eq('form_id', formId)
+              .eq('version', versionNumber)
+              .single();
+
+            if (!specificError && specificVersion) {
+              targetVersionData = specificVersion;
+              setIsLatestVersion(false);
+            } else {
+              setError(`Form version ${versionNumber} not found.`);
+              setLoading(false);
+              return;
+            }
+          }
+        }
+
+        setFormVersionId(targetVersionData.id);
+        setFormSchema(targetVersionData.content);
+        setFormTitle(targetVersionData.title);
+        setFormVersionNum(targetVersionData.version);
         setLoading(false);
       } catch {
         setError("Error loading form.");
@@ -106,7 +122,7 @@ export default function SubmissionPage() {
     }
     
     loadForm();
-  }, [versionId]);
+  }, [formId, versionQuery]);
 
   const handleSubmit = async (answers: any) => {
     try {
@@ -114,7 +130,7 @@ export default function SubmissionPage() {
       
       const { error } = await supabase.from('submissions').insert({
         form_id: formId,
-        form_version_id: formVersionNum ?? versionId, // Fallback to versionId if num isn't set, but types.ts allows either
+        form_version_id: formVersionId, // Now we use the ID of the loaded version
         submitted_by: user ? user.id : null,
         data: answers,
         filled_at: new Date().toISOString()
@@ -147,7 +163,7 @@ export default function SubmissionPage() {
           </div>
           <h2 className="text-xl font-semibold text-zinc-900 mb-2">Restricted Form</h2>
           <p className="text-zinc-600 mb-6">This form requires you to be logged in and have permission to access it.</p>
-          <Link href={`/login?redirect=/s/${versionId}`} className="inline-flex justify-center w-full px-4 py-2 text-sm font-medium text-white bg-zinc-900 rounded-lg hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2">
+          <Link href={`/login?redirect=/s/${formId}${versionQuery ? '?version=' + versionQuery : ''}`} className="inline-flex justify-center w-full px-4 py-2 text-sm font-medium text-white bg-zinc-900 rounded-lg hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2">
             Sign In to Access
           </Link>
         </div>
@@ -194,7 +210,7 @@ export default function SubmissionPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 relative">
+    <div className="min-h-screen bg-zinc-50 relative pb-16">
       {!isLatestVersion && (
         <div className="bg-amber-100 text-amber-800 px-4 py-3 text-sm text-center font-medium sticky top-0 z-50">
           Note: You are viewing an older version of this form.
@@ -208,6 +224,25 @@ export default function SubmissionPage() {
           onSubmit={handleSubmit}
         />
       </div>
+
+      <Link 
+        href="/"
+        className="fixed bottom-6 right-6 flex items-center gap-1.5 px-3 py-2 bg-white/80 border border-zinc-200/60 rounded-lg text-xs font-medium text-zinc-500 hover:text-zinc-800 hover:bg-zinc-50 transition-all z-50 group"
+      >
+        <span>Powered by</span>
+        <span className="font-semibold text-zinc-800">FieldTally</span>
+        <div className="w-4 h-4 bg-gradient-to-r from-zinc-600 to-zinc-800 rounded-md flex items-center justify-center opacity-90 group-hover:opacity-100 transition-opacity">
+           <span className="text-white text-[8px] font-bold tracking-tighter">FT</span>
+        </div>
+      </Link>
     </div>
+  );
+}
+
+export default function SubmissionPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-zinc-50"><div className="text-zinc-400 animate-pulse font-medium">Loading...</div></div>}>
+      <SubmissionPageContent />
+    </Suspense>
   );
 }
