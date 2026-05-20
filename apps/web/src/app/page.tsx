@@ -197,6 +197,11 @@ export default function Home() {
     });
   }, []);
 
+  // Keep browser tab title in sync with the form title
+  useEffect(() => {
+    document.title = formTitle ? `${formTitle} · FieldTally` : "FieldTally";
+  }, [formTitle]);
+
   const saveForm = async (json: any, titleOverride?: string) => {
     if (!formId) return;
     setSaveStatus("saving");

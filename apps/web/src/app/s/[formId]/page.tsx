@@ -114,6 +114,7 @@ function SubmissionPageContent() {
         setFormSchema(targetVersionData.content);
         setFormTitle(targetVersionData.title);
         setFormVersionNum(targetVersionData.version);
+        document.title = targetVersionData.title ? `${targetVersionData.title} · FieldTally` : "FieldTally";
         setLoading(false);
       } catch {
         setError("Error loading form.");
