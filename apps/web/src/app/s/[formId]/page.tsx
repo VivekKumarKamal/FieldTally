@@ -129,9 +129,14 @@ function SubmissionPageContent() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
+      if (formVersionNum == null) {
+        alert("Could not determine form version. Please reload and try again.");
+        return;
+      }
+
       const { error } = await supabase.from('submissions').insert({
         form_id: formId,
-        form_version_id: formVersionNum,
+        form_version: formVersionNum,
         submitted_by: user ? user.id : null,
         data: answers,
         filled_at: new Date().toISOString()

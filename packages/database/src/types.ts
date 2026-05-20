@@ -154,7 +154,7 @@ export interface Database {
         Row: {
           id: string
           form_id: string
-          form_version_id: string | number
+          form_version: number
           submitted_by: string | null
           data: Json
           filled_at: string | null
@@ -163,7 +163,7 @@ export interface Database {
         Insert: {
           id?: string
           form_id: string
-          form_version_id: string | number
+          form_version: number
           submitted_by?: string | null
           data: Json
           filled_at?: string | null
@@ -172,7 +172,7 @@ export interface Database {
         Update: {
           id?: string
           form_id?: string
-          form_version_id?: string | number
+          form_version?: number
           submitted_by?: string | null
           data?: Json
           filled_at?: string | null
