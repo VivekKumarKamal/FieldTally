@@ -378,10 +378,10 @@ function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors, visib
             value={currentVal}
             maxLength={maxLen}
             onChange={e => updateAnswer(id, e.target.value)}
-            style={{ color: "#3f3f46", paddingRight: maxLen ? "2.5rem" : undefined }}
+            style={{ color: "#3f3f46", paddingRight: maxLen ? "3rem" : undefined }}
           />
           {maxLen && (
-            <span style={{ position: "absolute", right: 0, bottom: 4, fontSize: "0.7rem", color: currentVal.length >= maxLen ? "#ef4444" : "#a1a1aa" }}>
+            <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: "0.7rem", color: currentVal.length >= maxLen ? "#ef4444" : "#a1a1aa" }}>
               {currentVal.length}/{maxLen}
             </span>
           )}
