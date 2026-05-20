@@ -131,7 +131,7 @@ function SubmissionPageContent() {
       
       const { error } = await supabase.from('submissions').insert({
         form_id: formId,
-        form_version_id: formVersionId, // Now we use the ID of the loaded version
+        form_version_id: formVersionNum,
         submitted_by: user ? user.id : null,
         data: answers,
         filled_at: new Date().toISOString()
