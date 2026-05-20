@@ -28,13 +28,13 @@ export default function Login() {
       return;
     }
 
-    router.push("/");
+    router.push("/dashboard");
   };
 
   const handleGoogleSignIn = async () => {
     await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: window.location.origin },
+      options: { redirectTo: `${window.location.origin}/dashboard` },
     });
   };
 

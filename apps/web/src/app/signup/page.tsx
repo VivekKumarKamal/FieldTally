@@ -38,14 +38,14 @@ export default function SignUp() {
         name,
         email,
       });
-      router.push("/");
+      router.push("/dashboard");
     }
   };
 
   const handleGoogleSignIn = async () => {
     await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: window.location.origin },
+      options: { redirectTo: `${window.location.origin}/dashboard` },
     });
   };
 

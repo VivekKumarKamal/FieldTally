@@ -21,7 +21,7 @@ import {
   RefreshCw, ChevronRight,
   Type, Hash, Mail, Phone, Link2, Calendar, Clock, AlignLeft,
   CheckSquare, CircleDot,
-  Heading1, Heading2, Heading3, List, ListOrdered, Cloud, Check, History, CloudUpload, CloudOff, CloudCheck
+  Heading1, Heading2, Heading3, List, ListOrdered, Cloud, Check, History, CloudUpload, CloudOff, CloudCheck, ChevronLeft
 } from "lucide-react";
 import * as Popover from "@radix-ui/react-popover";
 import * as Switch from "@radix-ui/react-switch";
@@ -437,6 +437,7 @@ export default function Home() {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setUserId(null);
+    router.push("/login");
   };
 
   const focusTextBlockAt = (pos: number) => {
@@ -536,12 +537,14 @@ export default function Home() {
       {/* Top Navigation Bar */}
       <div className="fixed top-0 left-0 right-0 h-14 bg-white/70 backdrop-blur-xl border-b border-zinc-200/60 z-[100] px-6 flex items-center justify-between transition-all duration-200">
         <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-gradient-to-br from-zinc-800 to-zinc-600 rounded flex items-center justify-center shadow-sm">
-               <span className="text-white text-xs font-bold tracking-tighter">FT</span>
+          <Link href={userId ? "/dashboard" : "/"} className="flex items-center gap-2 group/logo">
+            <div className="w-6 h-6 bg-gradient-to-br from-zinc-800 to-zinc-600 rounded flex items-center justify-center shadow-sm transition-all duration-200 group-hover/logo:from-zinc-700 group-hover/logo:to-zinc-500">
+              <span className="text-white text-xs font-bold tracking-tighter block group-hover/logo:hidden">FT</span>
+              <ChevronLeft className="w-4 h-4 text-white hidden group-hover/logo:block" />
             </div>
-            <h1 className="font-semibold text-zinc-800 tracking-tight">FieldTally</h1>
-          </div>
+            <span className="font-semibold text-zinc-800 tracking-tight transition-colors duration-200 block group-hover/logo:hidden">FieldTally</span>
+            <span className="font-semibold text-zinc-500 tracking-tight transition-colors duration-200 hidden group-hover/logo:block text-sm">Dashboard</span>
+          </Link>
         </div>
 
         <div className="flex items-center gap-3">
@@ -631,6 +634,12 @@ export default function Home() {
                 <div className="px-3 py-2 border-b border-zinc-100 mb-2">
                   <p className="text-sm font-medium text-zinc-900 truncate">{userProfile?.email || 'Logged in'}</p>
                 </div>
+                <Link 
+                  href="/dashboard" 
+                  className="w-full text-left px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 rounded-lg transition-colors block"
+                >
+                  My Forms
+                </Link>
                 <button 
                   onClick={handleLogout} 
                   className="w-full text-left px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
