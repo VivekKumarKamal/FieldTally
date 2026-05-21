@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus, FileText, Globe, Pencil, Trash2, Clock, AlertCircle } from "lucide-react";
 import { parseStoredDraft } from "../../lib/formActions";
+import * as Popover from "@radix-ui/react-popover";
 
 type FormRow = {
   id: string;
@@ -190,17 +191,37 @@ export default function Dashboard() {
               New Form
             </button>
             <div className="w-px h-5 bg-zinc-200"></div>
-            <button
-              onClick={handleLogout}
-              className="relative w-8 h-8 rounded-full border border-zinc-200 overflow-hidden hover:ring-2 hover:ring-zinc-200 transition-all focus:outline-none"
-              title={user?.email}
-            >
-              <img
-                src={getAnimalAvatar(user?.email)}
-                alt="Profile"
-                className="w-full h-full object-cover bg-zinc-50"
-              />
-            </button>
+            <Popover.Root>
+              <Popover.Trigger asChild>
+                <button
+                  className="relative w-8 h-8 rounded-full border border-zinc-200 overflow-hidden hover:ring-2 hover:ring-zinc-200 transition-all focus:outline-none cursor-pointer"
+                  title={user?.email}
+                >
+                  <img
+                    src={getAnimalAvatar(user?.email)}
+                    alt="Profile"
+                    className="w-full h-full object-cover bg-zinc-50"
+                  />
+                </button>
+              </Popover.Trigger>
+              <Popover.Content align="end" sideOffset={8} className="w-56 p-2 rounded-xl border border-zinc-200 bg-white shadow-xl z-[150] outline-none">
+                <div className="px-3 py-2 border-b border-zinc-100 mb-2">
+                  <p className="text-xs font-medium text-zinc-900 truncate">{user?.email || 'Logged in'}</p>
+                </div>
+                <Link 
+                  href="/create-form" 
+                  className="w-full text-left px-3 py-2 text-xs font-medium text-zinc-700 hover:bg-zinc-50 rounded-lg transition-colors block"
+                >
+                  Create a Form
+                </Link>
+                <button 
+                  onClick={handleLogout} 
+                  className="w-full text-left px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                >
+                  Sign Out
+                </button>
+              </Popover.Content>
+            </Popover.Root>
           </div>
         </div>
       </div>
