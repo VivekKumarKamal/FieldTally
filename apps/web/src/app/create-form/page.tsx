@@ -586,7 +586,7 @@ function FormEditorContent() {
                     className="w-full text-left px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 rounded-lg transition-colors flex justify-between items-center"
                           >
                     <span>Version {v.version}</span>
-                    <span className="text-xs text-zinc-400">{new Date(v.created_at).toLocaleDateString()}</span>
+                    <span className="text-xs text-zinc-400">{new Date(v.created_at).toLocaleDateString() + " | " + new Date(v.created_at).toLocaleTimeString()}</span>
                           </button>
                         ))}
                   </Popover.Content>
