@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, FileText, Globe, Pencil, Trash2, Clock, AlertCircle } from "lucide-react";
+import { Plus, FileText, Globe, Pencil, Trash2, Clock, AlertCircle, ClipboardList } from "lucide-react";
 import { parseStoredDraft } from "../../lib/formActions";
 import * as Popover from "@radix-ui/react-popover";
 
@@ -331,6 +331,13 @@ export default function Dashboard() {
                           View
                         </Link>
                       )}
+                      <Link
+                        href={`/dashboard/submissions/${form.id}`}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 rounded-lg transition-colors"
+                      >
+                        <ClipboardList className="w-3.5 h-3.5" />
+                        Submissions
+                      </Link>
                       <button
                         onClick={() => handleDeleteForm(form.id)}
                         className="flex items-center gap-1.5 px-2 py-1.5 text-sm text-red-500 hover:bg-red-50 rounded-lg transition-colors"
