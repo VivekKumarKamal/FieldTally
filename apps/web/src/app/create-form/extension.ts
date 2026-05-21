@@ -13,17 +13,17 @@ import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import Underline from "@tiptap/extension-underline";
 import { cx } from "class-variance-authority";
-import { CheckboxBlock, CheckboxTitle, CheckboxOption } from "./extensions/checkboxes";
-import { MultipleChoiceBlock, MultipleChoiceTitle, MultipleChoiceOption } from "./extensions/multipleChoice";
-import { ShortAnswerBlock } from "./extensions/shortAnswer";
-import { NumberAnswerBlock } from "./extensions/numberAnswer";
-import { EmailAnswerBlock } from "./extensions/emailAnswer";
-import { PhoneAnswerBlock } from "./extensions/phoneAnswer";
-import { LinkAnswerBlock } from "./extensions/linkAnswer";
-import { DateAnswerBlock } from "./extensions/dateAnswer";
-import { TimeAnswerBlock } from "./extensions/timeAnswer";
-import { LongAnswerBlock } from "./extensions/longAnswer";
-import { LogicBlock } from "./extensions/logicBlock";
+import { CheckboxBlock, CheckboxTitle, CheckboxOption } from "../extensions/checkboxes";
+import { MultipleChoiceBlock, MultipleChoiceTitle, MultipleChoiceOption } from "../extensions/multipleChoice";
+import { ShortAnswerBlock } from "../extensions/shortAnswer";
+import { NumberAnswerBlock } from "../extensions/numberAnswer";
+import { EmailAnswerBlock } from "../extensions/emailAnswer";
+import { PhoneAnswerBlock } from "../extensions/phoneAnswer";
+import { LinkAnswerBlock } from "../extensions/linkAnswer";
+import { DateAnswerBlock } from "../extensions/dateAnswer";
+import { TimeAnswerBlock } from "../extensions/timeAnswer";
+import { LongAnswerBlock } from "../extensions/longAnswer";
+import { LogicBlock } from "../extensions/logicBlock";
 
 const ID_BLOCK_TYPES = [
   "shortAnswerBlock",

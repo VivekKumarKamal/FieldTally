@@ -41,18 +41,23 @@ export interface LoadFormResult {
 
 /**
  * Load the form draft from localStorage + Supabase.
+ * If formIdParam is provided (from URL query), use it directly.
+ * Otherwise fall back to localStorage for backward compatibility.
  * Returns the resolved data. Does NOT set any React state.
  */
-export async function loadForm(initialContent: any): Promise<LoadFormResult> {
+export async function loadForm(initialContent: any, formIdParam?: string | null): Promise<LoadFormResult> {
   const { data: { user } } = await supabase.auth.getUser();
   const userId = user?.id || null;
 
-  let currentId = localStorage.getItem("current_draft_form_id");
+  let currentId = formIdParam || localStorage.getItem("current_draft_form_id");
   if (!currentId) {
     currentId = crypto.randomUUID();
     localStorage.setItem("current_draft_form_id", currentId);
     return { formId: currentId, userId, schema: initialContent, title: "", shouldRemount: false };
   }
+
+  // Keep localStorage in sync
+  localStorage.setItem("current_draft_form_id", currentId);
 
   // 1. Load from localStorage
   const localData = localStorage.getItem(`draft_schema_${currentId}`);

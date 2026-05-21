@@ -14,8 +14,8 @@ export default function PreviewPage() {
     const raw = localStorage.getItem("preview_form_schema");
     const title = localStorage.getItem("preview_form_title") || "";
     if (raw) {
-      try { setFormSchema(JSON.parse(raw)); setFormTitle(title); } catch { router.push("/"); }
-    } else { router.push("/"); }
+      try { setFormSchema(JSON.parse(raw)); setFormTitle(title); } catch { router.push("/create-form"); }
+    } else { router.push("/create-form"); }
   }, [router]);
 
   if (!formSchema) {
@@ -31,7 +31,7 @@ export default function PreviewPage() {
       {/* Top bar */}
       <div className="fixed top-0 left-0 right-0 h-14 bg-white/90 backdrop-blur-md border-b border-zinc-200 z-50 px-6 flex items-center gap-4">
         <button
-          onClick={() => router.push("/")}
+          onClick={() => router.push("/create-form")}
           className="flex items-center gap-2 text-sm font-medium text-zinc-600 hover:text-zinc-900 transition-colors"
         >
           <ArrowLeft size={16} /> Back to editor

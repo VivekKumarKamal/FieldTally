@@ -109,14 +109,11 @@ export default function Dashboard() {
   };
 
   const handleNewForm = () => {
-    const newId = crypto.randomUUID();
-    localStorage.setItem("current_draft_form_id", newId);
-    router.push("/");
+    router.push("/create-form");
   };
 
   const handleEditForm = (formId: string) => {
-    localStorage.setItem("current_draft_form_id", formId);
-    router.push("/");
+    router.push(`/create-form?form=${formId}`);
   };
 
   const handleDeleteForm = async (formId: string) => {
