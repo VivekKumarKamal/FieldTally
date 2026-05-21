@@ -15,10 +15,43 @@ import {
   ArrowRight,
   HelpCircle,
 } from "lucide-react";
+import * as Popover from "@radix-ui/react-popover";
+import { supabase } from "../lib/supabase";
+
+function getAnimalAvatar(email: string | undefined) {
+  if (!email) return "/avatars/panda.png";
+  const animals = ["cat", "fox", "panda"];
+  let hash = 0;
+  for (let i = 0; i < email.length; i++) {
+    hash = email.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % animals.length;
+  return `/avatars/${animals[index]}.png`;
+}
 
 export default function Home() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollProgress, setScrollProgress] = useState(0);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userProfile, setUserProfile] = useState<{ email?: string } | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data?.user) {
+        setUserId(data.user.id);
+        setUserProfile({
+          email: data.user.email,
+        });
+      }
+    });
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUserId(null);
+    setUserProfile(null);
+  };
+
 
   useEffect(() => {
     const handleScroll = () => {
@@ -69,9 +102,36 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-4">
-            <Link href="/login" className="text-xs font-medium text-zinc-500 hover:text-zinc-900 transition-colors">
-              Log In
-            </Link>
+            {userId ? (
+              <Popover.Root>
+                <Popover.Trigger asChild>
+                  <button className="relative w-7 h-7 rounded-full border border-zinc-200 overflow-hidden hover:ring-2 hover:ring-zinc-200 transition-all group focus:outline-none" title={userProfile?.email}>
+                    <img src={getAnimalAvatar(userProfile?.email)} alt="Profile" className="w-full h-full object-cover bg-zinc-50" />
+                  </button>
+                </Popover.Trigger>
+                <Popover.Content align="end" sideOffset={8} className="w-56 p-2 rounded-xl border border-zinc-200 bg-white shadow-xl z-[150] outline-none">
+                  <div className="px-3 py-2 border-b border-zinc-100 mb-2">
+                    <p className="text-xs font-medium text-zinc-900 truncate">{userProfile?.email || 'Logged in'}</p>
+                  </div>
+                  <Link 
+                    href="/dashboard" 
+                    className="w-full text-left px-3 py-2 text-xs font-medium text-zinc-700 hover:bg-zinc-50 rounded-lg transition-colors block"
+                  >
+                    My Forms
+                  </Link>
+                  <button 
+                    onClick={handleLogout} 
+                    className="w-full text-left px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                  >
+                    Sign Out
+                  </button>
+                </Popover.Content>
+              </Popover.Root>
+            ) : (
+              <Link href="/login" className="text-xs font-medium text-zinc-500 hover:text-zinc-900 transition-colors">
+                Log In
+              </Link>
+            )}
             <Link
               href="/create-form"
               className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 rounded-lg transition-all shadow-sm hover:scale-[1.02] active:scale-[0.98]"
@@ -150,12 +210,6 @@ export default function Home() {
             >
               Create a Form
               <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-            <Link
-              href="/dashboard"
-              className="inline-flex items-center gap-2 px-6 py-3 text-sm font-medium text-zinc-600 border border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50 rounded-xl transition-all active:scale-[0.98]"
-            >
-              Go to Dashboard
             </Link>
           </div>
         </div>
