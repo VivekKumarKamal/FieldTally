@@ -540,13 +540,13 @@ function FormEditorContent() {
       {/* Top Navigation Bar */}
       <div className="fixed top-0 left-0 right-0 h-14 bg-white/70 backdrop-blur-xl border-b border-zinc-200/60 z-[100] px-6 flex items-center justify-between transition-all duration-200">
         <div className="flex items-center gap-6">
-          <Link href={userId ? "/dashboard" : "/"} className="flex items-center gap-2 group/logo">
-            <div className="w-6 h-6 bg-gradient-to-br from-zinc-800 to-zinc-600 rounded flex items-center justify-center shadow-sm transition-all duration-200 group-hover/logo:from-zinc-700 group-hover/logo:to-zinc-500">
-              <span className="text-white text-xs font-bold tracking-tighter block group-hover/logo:hidden">FT</span>
-              <ChevronLeft className="w-4 h-4 text-white hidden group-hover/logo:block" />
+          <Link href={userId ? "/dashboard" : "/"} className={`flex items-center gap-2 ${userId ? 'group/logo' : ''}`}>
+            <div className={`w-6 h-6 bg-gradient-to-br from-zinc-800 to-zinc-600 rounded flex items-center justify-center shadow-sm transition-all duration-200 ${userId ? 'group-hover/logo:from-zinc-700 group-hover/logo:to-zinc-500' : ''}`}>
+              <span className={`text-white text-xs font-bold tracking-tighter block ${userId ? 'group-hover/logo:hidden' : ''}`}>FT</span>
+              {userId && <ChevronLeft className="w-4 h-4 text-white hidden group-hover/logo:block" />}
             </div>
-            <span className="font-semibold text-zinc-800 tracking-tight transition-colors duration-200 block group-hover/logo:hidden">FieldTally</span>
-            <span className="font-semibold text-zinc-500 tracking-tight transition-colors duration-200 hidden group-hover/logo:block text-sm">Dashboard</span>
+            <span className={`font-semibold text-zinc-800 tracking-tight transition-colors duration-200 block ${userId ? 'group-hover/logo:hidden' : ''}`}>FieldTally</span>
+            {userId && <span className="font-semibold text-zinc-500 tracking-tight transition-colors duration-200 hidden group-hover/logo:block text-sm">Dashboard</span>}
           </Link>
         </div>
 
