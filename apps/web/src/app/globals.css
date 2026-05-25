@@ -671,3 +671,58 @@ body {
 .turn-into-list::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* ═══════════════════════════════════════════════════════
+   ──  PRINT MODE STYLES  ──────────────────────────────
+   ═══════════════════════════════════════════════════════ */
+
+@media print {
+  /* Hide elements marked with print:hidden */
+  .print\:hidden {
+    display: none !important;
+  }
+  
+  /* Set exact color adjustments for printing backgrounds */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  body, html {
+    background: #ffffff !important;
+    color: #18181b !important;
+  }
+  
+  /* Prevent fields from breaking awkwardly across pages */
+  .short-answer-block,
+  .long-answer-block,
+  .number-answer-block,
+  .email-answer-block,
+  .phone-answer-block,
+  .link-answer-block,
+  .date-answer-block,
+  .time-answer-block,
+  div[data-type="checkbox-block"],
+  div[data-type="multiple-choice-block"] {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Styling inputs and forms for clean paper/pdf printing */
+  .block-placeholder-input,
+  .phone-answer-field,
+  .link-answer-field,
+  .long-answer-textarea {
+    border: 1px solid #d4d4d8 !important;
+    background-color: transparent !important;
+    color: #18181b !important;
+    border-radius: 6px !important;
+    box-shadow: none !important;
+  }
+
+  .form-title-input {
+    border: none !important;
+    font-size: 2.2rem !important;
+    margin-bottom: 2rem !important;
+    color: #18181b !important;
+  }
+}

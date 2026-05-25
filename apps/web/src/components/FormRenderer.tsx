@@ -23,7 +23,7 @@ function renderMarks(text: string, marks?: any[]): ReactNode {
   return el;
 }
 
-function renderInlineContent(content?: any[]): ReactNode[] {
+export function renderInlineContent(content?: any[]): ReactNode[] {
   if (!content) return [];
   return content.map((node, i) => {
     if (node.type === "text") return <span key={i}>{renderMarks(node.text || "", node.marks)}</span>;
@@ -32,7 +32,7 @@ function renderInlineContent(content?: any[]): ReactNode[] {
   });
 }
 
-function extractText(content?: any[]): string {
+export function extractText(content?: any[]): string {
   if (!content) return "";
   return content.map(n => {
     if (n.type === "text") return n.text || "";
@@ -90,11 +90,12 @@ type FormRendererProps = {
   progressBarOffset?: number | string;
   /** Called with the final answers map when the user submits. */
   onSubmit?: (answers: Record<string, any>) => void;
+  isPrinting?: boolean;
 };
 
 // ─── FormRenderer ────────────────────────────────────────
 
-export default function FormRenderer({ schema, title, progressBarOffset, onSubmit }: FormRendererProps) {
+export default function FormRenderer({ schema, title, progressBarOffset, onSubmit, isPrinting = false }: FormRendererProps) {
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const [submitted, setSubmitted] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -238,7 +239,7 @@ export default function FormRenderer({ schema, title, progressBarOffset, onSubmi
     <div className="tiptap form-renderer">
       {/* Progress bar */}
       {totalFields > 0 && (
-        <div style={{ position: "fixed", top: progressBarOffset || 0, left: 0, right: 0, zIndex: 40 }}>
+        <div className="print:hidden" style={{ position: "fixed", top: progressBarOffset || 0, left: 0, right: 0, zIndex: 40 }}>
           <div style={{ height: 3, background: "#f4f4f5" }}>
             <div
               style={{
@@ -267,14 +268,15 @@ export default function FormRenderer({ schema, title, progressBarOffset, onSubmi
           toggleCheckbox={toggleCheckbox}
           errors={errors}
           visibility={logicResult.visibility}
+          isPrinting={isPrinting}
         />
       ))}
 
-      <div className="mt-8">
+      <div className="mt-8 print:hidden">
         <button onClick={handleSubmit} className="submit-btn flex items-center gap-2"><span>Submit</span><Send size={16} /></button>
       </div>
 
-      <p className="text-center text-xs text-zinc-400 mt-10">
+      <p className="text-center text-xs text-zinc-400 mt-10 print:hidden">
         Powered by <span className="font-semibold text-zinc-500">FieldTally</span>
       </p>
     </div>
@@ -283,10 +285,11 @@ export default function FormRenderer({ schema, title, progressBarOffset, onSubmi
 
 // ─── Universal Node Renderer ─────────────────────────────
 
-function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors, visibility }: {
+export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors, visibility, isPrinting = false }: {
   node: any; answers: Record<string, any>; updateAnswer: (id: string, v: any) => void;
   toggleCheckbox: (id: string, opt: string) => void; errors: Record<string, string>;
   visibility: Record<string, boolean>;
+  isPrinting?: boolean;
 }) {
   const id = node.attrs?.id;
 
@@ -317,7 +320,7 @@ function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors, visib
     return (
       <blockquote>
         {(node.content || []).map((c: any, i: number) => (
-          <RenderNode key={i} node={c} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} />
+          <RenderNode key={i} node={c} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} />
         ))}
       </blockquote>
     );
@@ -333,28 +336,28 @@ function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors, visib
 
   // ── Bullet list ──
   if (node.type === "bulletList") {
-    return <ul>{(node.content || []).map((li: any, i: number) => <RenderNode key={i} node={li} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} />)}</ul>;
+    return <ul>{(node.content || []).map((li: any, i: number) => <RenderNode key={i} node={li} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} />)}</ul>;
   }
 
   // ── Ordered list ──
   if (node.type === "orderedList") {
-    return <ol>{(node.content || []).map((li: any, i: number) => <RenderNode key={i} node={li} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} />)}</ol>;
+    return <ol>{(node.content || []).map((li: any, i: number) => <RenderNode key={i} node={li} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} />)}</ol>;
   }
 
   // ── List item ──
   if (node.type === "listItem") {
-    return <li>{(node.content || []).map((c: any, i: number) => <RenderNode key={i} node={c} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} />)}</li>;
+    return <li>{(node.content || []).map((c: any, i: number) => <RenderNode key={i} node={c} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} />)}</li>;
   }
 
   // ── Task list ──
   if (node.type === "taskList") {
-    return <ul data-type="taskList">{(node.content || []).map((li: any, i: number) => <RenderNode key={i} node={li} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} />)}</ul>;
+    return <ul data-type="taskList">{(node.content || []).map((li: any, i: number) => <RenderNode key={i} node={li} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} />)}</ul>;
   }
   if (node.type === "taskItem") {
     return (
       <li data-checked={node.attrs?.checked ? "true" : "false"}>
         <label><input type="checkbox" readOnly checked={node.attrs?.checked} /></label>
-        <div>{(node.content || []).map((c: any, i: number) => <RenderNode key={i} node={c} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} />)}</div>
+        <div>{(node.content || []).map((c: any, i: number) => <RenderNode key={i} node={c} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} />)}</div>
       </li>
     );
   }
@@ -370,17 +373,22 @@ function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors, visib
           <div className={`${titleCls(node.type)} outline-none`}>{renderInlineContent(node.content)}</div>
           {required && <span className="required-badge">*</span>}
         </div>
+        {isPrinting && placeholder && (
+          <p className="text-xs text-zinc-400 italic mt-1 mb-1.5">
+            Note: {placeholder}
+          </p>
+        )}
         <div style={{ position: "relative" }}>
           <input
             className={`block-placeholder-input ${hasError ? "preview-error-field" : ""}`}
             type={getInputType(node.type)}
-            placeholder={placeholder || ""}
+            placeholder={isPrinting ? "" : (placeholder || "")}
             value={currentVal}
             maxLength={maxLen}
             onChange={e => updateAnswer(id, e.target.value)}
-            style={{ color: "#3f3f46", paddingRight: maxLen ? "3rem" : undefined }}
+            style={{ color: "#3f3f46", paddingRight: (!isPrinting && maxLen) ? "3rem" : undefined }}
           />
-          {maxLen && (
+          {!isPrinting && maxLen && (
             <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: "0.7rem", color: currentVal.length >= maxLen ? "#ef4444" : "#a1a1aa" }}>
               {currentVal.length}/{maxLen}
             </span>
@@ -404,6 +412,11 @@ function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors, visib
           <div className="phone-answer-title outline-none">{renderInlineContent(node.content)}</div>
           {required && <span className="required-badge">*</span>}
         </div>
+        {isPrinting && placeholder && (
+          <p className="text-xs text-zinc-400 italic mt-1 mb-1.5">
+            Note: {placeholder}
+          </p>
+        )}
         <div className={`phone-answer-field ${hasError ? "preview-error-field" : ""}`}>
           <span className="phone-cc-prefix">+</span>
           <input
@@ -423,7 +436,7 @@ function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors, visib
             className="phone-num-input"
             type="tel"
             inputMode="numeric"
-            placeholder={placeholder || ""}
+            placeholder={isPrinting ? "" : (placeholder || "")}
             maxLength={10}
             value={storedNum}
             onChange={e => {
@@ -446,12 +459,17 @@ function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors, visib
           <div className="link-answer-title outline-none">{renderInlineContent(node.content)}</div>
           {required && <span className="required-badge">*</span>}
         </div>
+        {isPrinting && placeholder && (
+          <p className="text-xs text-zinc-400 italic mt-1 mb-1.5">
+            Note: {placeholder}
+          </p>
+        )}
         <div className="link-answer-field">
           <span className="text-zinc-400 text-sm select-none">https://</span>
           <input
             className={`block-placeholder-input ${hasError ? "preview-error-field" : ""}`}
             type="url"
-            placeholder={placeholder || ""}
+            placeholder={isPrinting ? "" : (placeholder || "")}
             value={answers[id] || ""}
             onChange={e => updateAnswer(id, e.target.value)}
             style={{ color: "#3f3f46" }}
@@ -472,10 +490,15 @@ function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors, visib
           <div className="long-answer-title outline-none">{renderInlineContent(node.content)}</div>
           {required && <span className="required-badge">*</span>}
         </div>
+        {isPrinting && placeholder && (
+          <p className="text-xs text-zinc-400 italic mt-1 mb-1.5">
+            Note: {placeholder}
+          </p>
+        )}
         <div className="long-answer-field-wrapper">
           <textarea
             className={`block-placeholder-input long-answer-textarea ${hasError ? "preview-error-field" : ""}`}
-            placeholder={placeholder || ""}
+            placeholder={isPrinting ? "" : (placeholder || "")}
             rows={rows}
             value={answers[id] || ""}
             onChange={e => updateAnswer(id, e.target.value)}
@@ -500,14 +523,15 @@ function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors, visib
         </div>
         {optionNodes.map((opt: any, i: number) => {
           const text = extractText(opt.content);
-          if (!text.trim()) return null;
-          const isChecked = selected.includes(text);
+          if (!text.trim() && !isPrinting) return null;
+          const displayTxt = text.trim() ? text : `Option ${i + 1}`;
+          const isChecked = selected.includes(displayTxt);
           return (
-            <div key={i} data-type="checkbox-option" className="cursor-pointer" onClick={() => toggleCheckbox(id, text)}>
+            <div key={i} data-type="checkbox-option" className="cursor-pointer" onClick={() => toggleCheckbox(id, displayTxt)}>
               <div className="option-marker" style={{ background: isChecked ? "#232323" : "transparent", borderColor: isChecked ? "#232323" : "#ccc", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {isChecked && <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
               </div>
-              <div className="option-content" style={{ cursor: "pointer" }}>{text}</div>
+              <div className="option-content" style={{ cursor: "pointer", color: text.trim() ? "inherit" : "#adb5bd" }}>{displayTxt}</div>
             </div>
           );
         })}
@@ -529,14 +553,15 @@ function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors, visib
         </div>
         {optionNodes.map((opt: any, i: number) => {
           const text = extractText(opt.content);
-          if (!text.trim()) return null;
-          const isSelected = selected === text;
+          if (!text.trim() && !isPrinting) return null;
+          const displayTxt = text.trim() ? text : `Option ${i + 1}`;
+          const isSelected = selected === displayTxt;
           return (
-            <div key={i} data-type="multiple-choice-option" className="cursor-pointer" onClick={() => updateAnswer(id, text)}>
+            <div key={i} data-type="multiple-choice-option" className="cursor-pointer" onClick={() => updateAnswer(id, displayTxt)}>
               <div className="option-marker" style={{ background: isSelected ? "#232323" : "transparent", borderColor: isSelected ? "#232323" : "#ccc", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {isSelected && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "white" }} />}
               </div>
-              <div className="option-content" style={{ cursor: "pointer" }}>{text}</div>
+              <div className="option-content" style={{ cursor: "pointer", color: text.trim() ? "inherit" : "#adb5bd" }}>{displayTxt}</div>
             </div>
           );
         })}
