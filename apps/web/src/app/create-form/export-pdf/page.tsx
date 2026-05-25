@@ -48,6 +48,12 @@ function ExportPdfContent() {
     }
   }, [router]);
 
+  useEffect(() => {
+    if (formTitle) {
+      document.title = `${formTitle} - FieldTally`;
+    }
+  }, [formTitle]);
+
   // Make all blocks visible by default
   const visibility = useMemo(() => {
     const vis: Record<string, boolean> = {};

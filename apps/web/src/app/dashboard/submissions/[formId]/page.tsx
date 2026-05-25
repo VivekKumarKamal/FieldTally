@@ -12,6 +12,8 @@ import {
   ChevronDown,
   Inbox,
   Loader2,
+  BarChart3,
+  PieChart,
 } from "lucide-react";
 import { supabase } from "../../../../lib/supabase";
 
@@ -38,9 +40,19 @@ type QuestionColumn = {
   id: string;
   label: string;
   type: string;
+  options?: string[];
 };
 
 // ─── Helpers ──────────────────────────────────────────────
+
+function extractNodeOptions(node: any): string[] {
+  if (!node.content) return [];
+  const optionTypes = ["checkboxOption", "multipleChoiceOption"];
+  return node.content
+    .filter((c: any) => optionTypes.includes(c.type))
+    .map((opt: any) => extractTextFromContent(opt.content).trim())
+    .filter(Boolean);
+}
 
 /** Extract the question columns from a form version's content schema */
 function extractColumns(content: any): QuestionColumn[] {
@@ -54,7 +66,10 @@ function extractColumns(content: any): QuestionColumn[] {
 
     const label = extractQuestionText(node);
     if (label) {
-      cols.push({ id, label, type: node.type });
+      const options = (node.type === "checkboxBlock" || node.type === "multipleChoiceBlock")
+        ? extractNodeOptions(node)
+        : undefined;
+      cols.push({ id, label, type: node.type, options });
     }
   }
   return cols;
@@ -213,6 +228,490 @@ function exportExcel(
   );
 }
 
+// ─── Analytics Charting Components ─────────────────────────
+
+const CHART_COLORS = [
+  "#3b82f6", // Blue
+  "#10b981", // Emerald
+  "#6366f1", // Indigo
+  "#f59e0b", // Amber
+  "#ec4899", // Pink
+  "#8b5cf6", // Violet
+  "#14b8a6", // Teal
+  "#ef4444", // Red
+];
+
+function getChartData(col: QuestionColumn, submissions: Submission[]) {
+  const counts: Record<string, number> = {};
+
+  if (col.options) {
+    for (const opt of col.options) {
+      counts[opt] = 0;
+    }
+  }
+
+  let totalResponses = 0;
+
+  for (const sub of submissions) {
+    const val = sub.data[col.id];
+    if (val == null || val === "") continue;
+
+    if (Array.isArray(val)) {
+      for (const item of val) {
+        if (item) {
+          counts[item] = (counts[item] || 0) + 1;
+          totalResponses++;
+        }
+      }
+    } else {
+      const item = String(val);
+      counts[item] = (counts[item] || 0) + 1;
+      totalResponses++;
+    }
+  }
+
+  const data = Object.entries(counts).map(([label, value]) => ({
+    label,
+    value,
+  }));
+
+  if (col.options) {
+    data.sort((a, b) => col.options!.indexOf(a.label) - col.options!.indexOf(b.label));
+  } else {
+    data.sort((a, b) => b.value - a.value);
+  }
+
+  if (!col.options) {
+    if (data.length > 6) {
+      const top = data.slice(0, 5);
+      const rest = data.slice(5);
+      const otherValue = rest.reduce((sum, item) => sum + item.value, 0);
+      return {
+        data: [...top, { label: "Other", value: otherValue }],
+        total: totalResponses,
+      };
+    }
+  }
+
+  return {
+    data: data.filter(d => d.value > 0 || col.options),
+    total: totalResponses,
+  };
+}
+
+type BarChartProps = {
+  data: { label: string; value: number }[];
+  total: number;
+};
+
+function BarChart({ data, total }: BarChartProps) {
+  const chartData = useMemo(() => data.filter(d => d.value > 0), [data]);
+  const totalSubmissions = useMemo(() => chartData.reduce((sum, d) => sum + d.value, 0), [chartData]);
+
+  if (totalSubmissions === 0) {
+    return (
+      <div className="h-44 flex items-center justify-center text-zinc-400 text-xs font-medium">
+        No answers submitted for this question
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3 py-2 pr-1">
+      {chartData.map((d, index) => {
+        const pct = Math.round((d.value / totalSubmissions) * 100);
+        return (
+          <div key={index} className="flex flex-col gap-1">
+            <div className="flex justify-between items-center text-xs">
+              <span className="truncate pr-4 text-zinc-600" title={d.label}>{d.label}</span>
+              <span className="font-semibold text-zinc-800 shrink-0">
+                {d.value} ({pct}%)
+              </span>
+            </div>
+            <div className="w-full bg-zinc-100 rounded-full h-2">
+              <div
+                className="h-2 rounded-full transition-all duration-500"
+                style={{
+                  width: `${pct}%`,
+                  backgroundColor: CHART_COLORS[index % CHART_COLORS.length],
+                }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+type DonutChartProps = {
+  data: { label: string; value: number }[];
+  total: number;
+};
+
+function DonutChart({ data, total }: DonutChartProps) {
+  const radius = 40;
+  const strokeWidth = 12;
+  const circumference = 2 * Math.PI * radius; // ~251.327
+
+  let accumulatedPercent = 0;
+
+  const chartData = useMemo(() => data.filter(d => d.value > 0), [data]);
+  const totalSubmissions = useMemo(() => chartData.reduce((sum, d) => sum + d.value, 0), [chartData]);
+
+  if (totalSubmissions === 0) {
+    return (
+      <div className="h-44 flex items-center justify-center text-zinc-400 text-xs font-medium">
+        No answers submitted for this question
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col sm:flex-row items-center gap-6 py-2">
+      <div className="relative w-36 h-36 flex-shrink-0">
+        <svg width="100%" height="100%" viewBox="0 0 100 100">
+          <circle
+            cx="50"
+            cy="50"
+            r={radius}
+            fill="transparent"
+            stroke="#f4f4f5"
+            strokeWidth={strokeWidth}
+          />
+          {chartData.map((d, index) => {
+            const percent = d.value / totalSubmissions;
+            const strokeLength = percent * circumference;
+            const strokeOffset = -accumulatedPercent * circumference;
+            accumulatedPercent += percent;
+
+            return (
+              <circle
+                key={index}
+                cx="50"
+                cy="50"
+                r={radius}
+                fill="transparent"
+                stroke={CHART_COLORS[index % CHART_COLORS.length]}
+                strokeWidth={strokeWidth}
+                strokeDasharray={`${strokeLength} ${circumference}`}
+                strokeDashoffset={strokeOffset}
+                transform="rotate(-90 50 50)"
+                className="transition-all duration-350 ease-out"
+              />
+            );
+          })}
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-xl font-extrabold text-zinc-800 leading-none">{totalSubmissions}</span>
+          <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider mt-1">Total</span>
+        </div>
+      </div>
+
+      <div className="flex-1 w-full flex flex-col gap-1.5 pr-1">
+        {chartData.map((d, index) => {
+          const pct = Math.round((d.value / totalSubmissions) * 100);
+          return (
+            <div key={index} className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <div
+                  className="w-2 h-2 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }}
+                />
+                <span className="truncate text-zinc-600" title={d.label}>{d.label}</span>
+              </div>
+              <span className="font-semibold text-zinc-800 shrink-0 ml-2">
+                {d.value} ({pct}%)
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Utility to draw rounded rectangles on canvas
+function drawRoundRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
+  if (width < 2 * radius) radius = width / 2;
+  if (height < 2 * radius) radius = height / 2;
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + width, y, x + width, y + height, radius);
+  ctx.arcTo(x + width, y + height, x, y + height, radius);
+  ctx.arcTo(x, y + height, x, y, radius);
+  ctx.arcTo(x, y, x + width, y, radius);
+  ctx.closePath();
+}
+
+function exportChartToJPEG(col: QuestionColumn, data: { label: string; value: number }[], total: number, chartType: "bar" | "donut") {
+  const canvas = document.createElement("canvas");
+  const scale = 2;
+  const width = 600 * scale;
+  const height = 400 * scale;
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  ctx.scale(scale, scale);
+
+  // Background
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, 600, 400);
+
+  // Border
+  ctx.strokeStyle = "#e4e4e7";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(10, 10, 580, 380);
+
+  // Question Title
+  ctx.fillStyle = "#18181b";
+  ctx.font = "bold 16px Inter, system-ui, sans-serif";
+  
+  const title = col.label;
+  const words = title.split(" ");
+  let line = "";
+  let y = 42;
+  const maxWidth = 540;
+  const lineHeight = 22;
+
+  for (let n = 0; n < words.length; n++) {
+    const testLine = line + words[n] + " ";
+    const metrics = ctx.measureText(testLine);
+    if (metrics.width > maxWidth && n > 0) {
+      ctx.fillText(line, 30, y);
+      line = words[n] + " ";
+      y += lineHeight;
+    } else {
+      line = testLine;
+    }
+  }
+  ctx.fillText(line, 30, y);
+  
+  y += 18;
+  ctx.fillStyle = "#a1a1aa";
+  ctx.font = "bold 10px Inter, system-ui, sans-serif";
+  ctx.fillText(col.type.replace(/Block$/, "").replace(/([A-Z])/g, " $1").toUpperCase(), 30, y);
+
+  y += 30;
+
+  const colors = [
+    "#3b82f6", // Blue
+    "#10b981", // Emerald
+    "#6366f1", // Indigo
+    "#f59e0b", // Amber
+    "#ec4899", // Pink
+    "#8b5cf6", // Violet
+    "#14b8a6", // Teal
+    "#ef4444", // Red
+  ];
+
+  const activeData = data.filter(d => d.value > 0);
+  const totalSubmissions = activeData.reduce((sum, d) => sum + d.value, 0);
+
+  if (totalSubmissions === 0) {
+    ctx.fillStyle = "#71717a";
+    ctx.font = "medium 14px Inter, system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("No answers submitted for this question", 300, y + 100);
+    downloadJPEG();
+    return;
+  }
+
+  if (chartType === "bar") {
+    const barStartX = 30;
+    const barWidth = 540;
+    const barHeight = 12;
+    const spacing = 45;
+
+    activeData.forEach((d, index) => {
+      const pct = d.value / totalSubmissions;
+      const displayPct = Math.round(pct * 100);
+      const currentY = y + index * spacing;
+
+      if (currentY > 370) return;
+
+      ctx.fillStyle = "#3f3f46";
+      ctx.font = "medium 12px Inter, system-ui, sans-serif";
+      ctx.textAlign = "left";
+      
+      let label = d.label;
+      const maxLabelWidth = 400;
+      if (ctx.measureText(label).width > maxLabelWidth) {
+        while (ctx.measureText(label + "...").width > maxLabelWidth && label.length > 0) {
+          label = label.slice(0, -1);
+        }
+        label += "...";
+      }
+      ctx.fillText(label, barStartX, currentY);
+
+      ctx.fillStyle = "#18181b";
+      ctx.font = "bold 12px Inter, system-ui, sans-serif";
+      ctx.textAlign = "right";
+      ctx.fillText(`${d.value} (${displayPct}%)`, barStartX + barWidth, currentY);
+
+      const barY = currentY + 8;
+      ctx.fillStyle = "#f4f4f5";
+      drawRoundRect(ctx, barStartX, barY, barWidth, barHeight, 6);
+      ctx.fill();
+
+      ctx.fillStyle = colors[index % colors.length];
+      const fillWidth = Math.max(barWidth * pct, 6);
+      drawRoundRect(ctx, barStartX, barY, fillWidth, barHeight, 6);
+      ctx.fill();
+    });
+  } else {
+    const centerX = 160;
+    const centerY = y + 100;
+    const radius = 70;
+    const strokeWidth = 22;
+
+    ctx.strokeStyle = "#f4f4f5";
+    ctx.lineWidth = strokeWidth;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+    ctx.stroke();
+
+    let startAngle = -Math.PI / 2;
+
+    activeData.forEach((d, index) => {
+      const pct = d.value / totalSubmissions;
+      const angle = pct * 2 * Math.PI;
+
+      ctx.strokeStyle = colors[index % colors.length];
+      ctx.lineWidth = strokeWidth;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, startAngle, startAngle + angle);
+      ctx.stroke();
+
+      startAngle += angle;
+    });
+
+    ctx.fillStyle = "#18181b";
+    ctx.font = "extrabold 22px Inter, system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(String(totalSubmissions), centerX, centerY + 4);
+    
+    ctx.fillStyle = "#a1a1aa";
+    ctx.font = "bold 10px Inter, system-ui, sans-serif";
+    ctx.fillText("TOTAL", centerX, centerY + 18);
+
+    const legendX = 320;
+    const legendY = y + 10;
+    const legendSpacing = 26;
+
+    activeData.forEach((d, index) => {
+      const currentLegendY = legendY + index * legendSpacing;
+      if (currentLegendY > 370) return;
+
+      const pct = Math.round((d.value / totalSubmissions) * 100);
+
+      ctx.fillStyle = colors[index % colors.length];
+      ctx.beginPath();
+      ctx.arc(legendX, currentLegendY - 4, 5, 0, 2 * Math.PI);
+      ctx.fill();
+
+      ctx.fillStyle = "#3f3f46";
+      ctx.font = "medium 12px Inter, system-ui, sans-serif";
+      ctx.textAlign = "left";
+      
+      let label = d.label;
+      const maxLegendLabelWidth = 160;
+      if (ctx.measureText(label).width > maxLegendLabelWidth) {
+        while (ctx.measureText(label + "...").width > maxLegendLabelWidth && label.length > 0) {
+          label = label.slice(0, -1);
+        }
+        label += "...";
+      }
+      ctx.fillText(label, legendX + 15, currentLegendY);
+
+      ctx.fillStyle = "#18181b";
+      ctx.font = "bold 12px Inter, system-ui, sans-serif";
+      ctx.textAlign = "right";
+      ctx.fillText(`${d.value} (${pct}%)`, 560, currentLegendY);
+    });
+  }
+
+  downloadJPEG();
+
+  function downloadJPEG() {
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
+    const a = document.createElement("a");
+    a.href = dataUrl;
+    a.download = `${col.label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-chart.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+}
+
+type QuestionCardProps = {
+  col: QuestionColumn;
+  submissions: Submission[];
+};
+
+function QuestionCard({ col, submissions }: QuestionCardProps) {
+  const [chartType, setChartType] = useState<"bar" | "donut">("bar");
+  const { data, total } = useMemo(() => getChartData(col, submissions), [col, submissions]);
+
+  return (
+    <div className="bg-white border border-zinc-200/80 rounded-xl p-5 shadow-sm flex flex-col gap-4">
+      <div className="flex justify-between items-start gap-4">
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <h3 className="text-sm font-bold text-zinc-800 leading-snug line-clamp-2" title={col.label}>
+            {col.label}
+          </h3>
+          <span className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider mt-0.5">
+            {col.type.replace(/Block$/, "").replace(/([A-Z])/g, " $1").trim()}
+          </span>
+        </div>
+
+        {total > 0 && (
+          <div className="flex items-center gap-2.5 shrink-0">
+            <button
+              onClick={() => exportChartToJPEG(col, data, total, chartType)}
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50 border border-zinc-200/50 shadow-sm transition-all cursor-pointer bg-white"
+              title="Download Chart as JPEG"
+            >
+              <Download size={14} />
+            </button>
+            <div className="flex bg-zinc-100 p-0.5 rounded-lg border border-zinc-200/40">
+              <button
+                onClick={() => setChartType("bar")}
+                className={`p-1 rounded-md transition-all cursor-pointer ${
+                  chartType === "bar" ? "bg-white text-zinc-800 shadow-sm" : "text-zinc-400 hover:text-zinc-600"
+                }`}
+                title="Bar Chart"
+              >
+                <BarChart3 size={14} />
+              </button>
+              <button
+                onClick={() => setChartType("donut")}
+                className={`p-1 rounded-md transition-all cursor-pointer ${
+                  chartType === "donut" ? "bg-white text-zinc-800 shadow-sm" : "text-zinc-400 hover:text-zinc-600"
+                }`}
+                title="Donut Chart"
+              >
+                <PieChart size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 mt-2">
+        {chartType === "bar" ? (
+          <BarChart data={data} total={total} />
+        ) : (
+          <DonutChart data={data} total={total} />
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Component ────────────────────────────────────────────
 
 function SubmissionsContent() {
@@ -226,6 +725,7 @@ function SubmissionsContent() {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"responses" | "analysis">("responses");
 
   // Fetch data
   useEffect(() => {
@@ -442,7 +942,7 @@ function SubmissionsContent() {
       )}
 
       {/* Content */}
-      <div className="max-w-7xl mx-auto px-6 py-6">
+      <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col gap-6">
         {versions.length === 0 ? (
           <div className="text-center py-20">
             <div className="w-16 h-16 bg-zinc-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -464,69 +964,121 @@ function SubmissionsContent() {
             </p>
           </div>
         ) : (
-          <div className="bg-white border border-zinc-200/80 rounded-xl overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-zinc-100">
-                    <th className="text-left px-4 py-3 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider bg-zinc-50/80 whitespace-nowrap sticky left-0 z-10">
-                      #
-                    </th>
-                    <th className="text-left px-4 py-3 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider bg-zinc-50/80 whitespace-nowrap min-w-[160px]">
-                      Submitted At
-                    </th>
-                    {columns.map((col) => (
-                      <th
-                        key={col.id}
-                        className="text-left px-4 py-3 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider bg-zinc-50/80 whitespace-nowrap min-w-[180px] max-w-[300px]"
-                        title={col.label}
-                      >
-                        <span className="truncate block">{col.label}</span>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredSubmissions.map((sub, i) => (
-                    <tr
-                      key={sub.id}
-                      className={`border-b border-zinc-50 hover:bg-zinc-50/50 transition-colors ${
-                        i % 2 === 0 ? "" : "bg-zinc-25"
-                      }`}
-                    >
-                      <td className="px-4 py-3 text-zinc-400 font-medium tabular-nums sticky left-0 bg-white z-10">
-                        {i + 1}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-500 whitespace-nowrap">
-                        {formatDateTime(sub.filled_at)}
-                      </td>
-                      {columns.map((col) => (
-                        <td
-                          key={col.id}
-                          className="px-4 py-3 text-zinc-700 max-w-[300px]"
-                        >
-                          <span className="block truncate" title={formatCellValue(sub.data[col.id])}>
-                            {formatCellValue(sub.data[col.id])}
-                          </span>
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <div className="flex flex-col gap-6 animate-in fade-in duration-200">
+            {/* View Switcher Segmented Control */}
+            <div className="flex justify-between items-center bg-white border border-zinc-200/80 rounded-xl p-3 shadow-sm">
+              <div className="flex bg-zinc-100 p-0.5 rounded-lg border border-zinc-200/40">
+                <button
+                  onClick={() => setActiveTab("responses")}
+                  className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                    activeTab === "responses"
+                      ? "bg-white text-zinc-900 shadow-sm"
+                      : "text-zinc-400 hover:text-zinc-600"
+                  }`}
+                >
+                  Responses Table
+                </button>
+                <button
+                  onClick={() => setActiveTab("analysis")}
+                  className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                    activeTab === "analysis"
+                      ? "bg-white text-zinc-900 shadow-sm"
+                      : "text-zinc-400 hover:text-zinc-600"
+                  }`}
+                >
+                  Analysis & Charts
+                </button>
+              </div>
+              <span className="text-xs text-zinc-400 font-medium hidden sm:inline">
+                Switch between raw data table and visual analysis charts
+              </span>
             </div>
 
-            {/* Footer */}
-            <div className="px-4 py-3 border-t border-zinc-100 bg-zinc-50/50 flex items-center justify-between">
-              <span className="text-xs text-zinc-400">
-                Showing {filteredSubmissions.length}{" "}
-                {filteredSubmissions.length === 1 ? "response" : "responses"} for
-                Version {selectedVersion}
-              </span>
-              <span className="text-xs text-zinc-300">
-                {totalCount} total across all versions
-              </span>
-            </div>
+            {activeTab === "responses" ? (
+              <div className="bg-white border border-zinc-200/80 rounded-xl overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-zinc-100">
+                        <th className="text-left px-4 py-3 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider bg-zinc-50/80 whitespace-nowrap sticky left-0 z-10">
+                          #
+                        </th>
+                        <th className="text-left px-4 py-3 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider bg-zinc-50/80 whitespace-nowrap min-w-[160px]">
+                          Submitted At
+                        </th>
+                        {columns.map((col) => (
+                          <th
+                            key={col.id}
+                            className="text-left px-4 py-3 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider bg-zinc-50/80 whitespace-nowrap min-w-[180px] max-w-[300px]"
+                            title={col.label}
+                          >
+                            <span className="truncate block">{col.label}</span>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredSubmissions.map((sub, i) => (
+                        <tr
+                          key={sub.id}
+                          className={`border-b border-zinc-50 hover:bg-zinc-50/50 transition-colors ${
+                            i % 2 === 0 ? "" : "bg-zinc-25"
+                          }`}
+                        >
+                          <td className="px-4 py-3 text-zinc-400 font-medium tabular-nums sticky left-0 bg-white z-10">
+                            {i + 1}
+                          </td>
+                          <td className="px-4 py-3 text-zinc-500 whitespace-nowrap">
+                            {formatDateTime(sub.filled_at)}
+                          </td>
+                          {columns.map((col) => (
+                            <td
+                              key={col.id}
+                              className="px-4 py-3 text-zinc-700 max-w-[300px]"
+                            >
+                              <span className="block truncate" title={formatCellValue(sub.data[col.id])}>
+                                {formatCellValue(sub.data[col.id])}
+                              </span>
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Footer */}
+                <div className="px-4 py-3 border-t border-zinc-100 bg-zinc-50/50 flex items-center justify-between">
+                  <span className="text-xs text-zinc-400">
+                    Showing {filteredSubmissions.length}{" "}
+                    {filteredSubmissions.length === 1 ? "response" : "responses"} for
+                    Version {selectedVersion}
+                  </span>
+                  <span className="text-xs text-zinc-300">
+                    {totalCount} total across all versions
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                {/* Left Column */}
+                <div className="flex flex-col gap-6">
+                  {columns
+                    .filter((_, idx) => idx % 2 === 0)
+                    .map((col) => (
+                      <QuestionCard key={col.id} col={col} submissions={filteredSubmissions} />
+                    ))}
+                </div>
+                {/* Right Column */}
+                <div className="flex flex-col gap-6">
+                  {columns
+                    .filter((_, idx) => idx % 2 === 1)
+                    .map((col) => (
+                      <QuestionCard key={col.id} col={col} submissions={filteredSubmissions} />
+                    ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
