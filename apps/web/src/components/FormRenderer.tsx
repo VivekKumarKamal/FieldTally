@@ -961,16 +961,16 @@ export function SignaturePad({ id, formId, value, onChange, hasError }: Signatur
     const canvas = canvasRef.current;
     if (!canvas || value) return;
 
-    // Fix internal resolution to exactly 500x300 (5:3 aspect ratio)
-    canvas.width = 500;
-    canvas.height = 300;
+    // Fix internal resolution to exactly 1000x600 (5:3 aspect ratio) for retina sharpness
+    canvas.width = 1000;
+    canvas.height = 600;
 
     const ctx = canvas.getContext("2d");
     if (ctx) {
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       ctx.strokeStyle = "#18181b"; // zinc-900
-      ctx.lineWidth = 2.5; // Bold stroke for 500x300 resolution
+      ctx.lineWidth = 4.0; // Adjusted stroke width for 1000x600 resolution
       ctxRef.current = ctx;
     }
   }, [value]);
@@ -982,9 +982,9 @@ export function SignaturePad({ id, formId, value, onChange, hasError }: Signatur
     canvas.setPointerCapture(e.pointerId);
 
     const rect = canvas.getBoundingClientRect();
-    // Scale client mouse/touch position to fixed 500x300 canvas coordinate space
-    const x = ((e.clientX - rect.left) / rect.width) * 500;
-    const y = ((e.clientY - rect.top) / rect.height) * 300;
+    // Scale client mouse/touch position to canvas coordinate space
+    const x = ((e.clientX - rect.left) / rect.width) * canvas.width;
+    const y = ((e.clientY - rect.top) / rect.height) * canvas.height;
 
     ctxRef.current.beginPath();
     ctxRef.current.moveTo(x, y);
@@ -994,12 +994,13 @@ export function SignaturePad({ id, formId, value, onChange, hasError }: Signatur
   };
 
   const draw = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || !ctxRef.current || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    if (!isDrawing || !ctxRef.current || !canvas) return;
 
-    const rect = canvasRef.current.getBoundingClientRect();
+    const rect = canvas.getBoundingClientRect();
     // Scale coordinates proportionally to canvas space
-    const x = ((e.clientX - rect.left) / rect.width) * 500;
-    const y = ((e.clientY - rect.top) / rect.height) * 300;
+    const x = ((e.clientX - rect.left) / rect.width) * canvas.width;
+    const y = ((e.clientY - rect.top) / rect.height) * canvas.height;
 
     ctxRef.current.lineTo(x, y);
     ctxRef.current.stroke();
