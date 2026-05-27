@@ -22,7 +22,7 @@ import {
   Type, Hash, Mail, Phone, Link2, Calendar, Clock, AlignLeft,
   CheckSquare, CircleDot, MapPin, Image, PenTool,
   Heading1, Heading2, Heading3, List, ListOrdered, Cloud, Check, History, CloudUpload, CloudOff, CloudCheck, ChevronLeft,
-  FileDown
+  FileDown, LayoutGrid
 } from "lucide-react";
 import * as Popover from "@radix-ui/react-popover";
 import * as Switch from "@radix-ui/react-switch";
@@ -33,6 +33,7 @@ import Link from "next/link";
 import { useLogicStore } from "../../hooks/useLogicStore";
 import { turnBlockInto, TURN_INTO_TARGETS, isConvertibleBlock, resolveTargetKey } from "../../lib/turnInto";
 import { loadForm as loadFormAction, saveDraft, publishForm, type SaveStatus } from "../../lib/formActions";
+import { TEMPLATES, getClonedTemplateSchema } from "../../lib/templates";
 import FormRenderer from "../../components/FormRenderer";
 
 import { defaultExtensions } from "./extension";
@@ -172,6 +173,7 @@ function FormEditorContent() {
   const [formId, setFormId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isEditorEmpty, setIsEditorEmpty] = useState(true);
   const [editorInitialData, setEditorInitialData] = useState<any>(initialContent);
   const [formTitle, setFormTitle] = useState("");
   const [publishUrl, setPublishUrl] = useState<string | null>(null);
@@ -180,6 +182,7 @@ function FormEditorContent() {
   const [latestPublishedTitle, setLatestPublishedTitle] = useState<string | null>(null);
   const [versionHistory, setVersionHistory] = useState<any[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [userProfile, setUserProfile] = useState<{ email?: string, avatar_url?: string } | null>(null);
   const [copiedUrl, setCopiedUrl] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -192,6 +195,32 @@ function FormEditorContent() {
     localStorage.setItem("export_form_schema", JSON.stringify(json));
     localStorage.setItem("export_form_title", formTitle);
     window.open("/create-form/export-pdf", "_blank");
+  };
+
+  const handleLoadTemplate = (template: any) => {
+    if (!editorRef.current) return;
+    
+    // Check if the current editor has any meaningful content or title
+    const currentJson = editorRef.current.getJSON();
+    const hasContent = currentJson.content && (
+      currentJson.content.length > 1 || 
+      (currentJson.content[0] && currentJson.content[0].content && currentJson.content[0].content.length > 0)
+    );
+
+    if (hasContent || formTitle.trim() !== "") {
+      const confirmLoad = confirm("Loading a template will replace all current questions and content in the editor. Do you want to continue?");
+      if (!confirmLoad) return;
+    }
+    
+    const freshSchema = getClonedTemplateSchema(template.schema);
+    
+    // Set content in Tiptap
+    editorRef.current.commands.setContent(freshSchema);
+    // Update title
+    setFormTitle(template.title);
+    // Save draft
+    saveForm(freshSchema, template.title);
+    setShowTemplates(false);
   };
 
   useEffect(() => {
@@ -242,6 +271,7 @@ function FormEditorContent() {
   };
 
   const handleEditorUpdate = (editor: TiptapEditor) => {
+    setIsEditorEmpty(editor.isEmpty);
     setSaveStatus("saving");
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     timeoutRef.current = setTimeout(() => {
@@ -288,6 +318,7 @@ function FormEditorContent() {
   const syncEditorSelection = (editor: TiptapEditor) => {
     editorRef.current = editor;
     lastSelectionRef.current = editor.state.selection.from;
+    setIsEditorEmpty(editor.isEmpty);
   };
 
   const getHandleTargetPos = () => {
@@ -611,6 +642,8 @@ function FormEditorContent() {
               </Popover.Root>
             )}
 
+
+
             <div className="h-4 w-px bg-zinc-300 mx-1"></div>
 
             <button
@@ -902,6 +935,8 @@ function FormEditorContent() {
             />
           </div>
 
+
+
           <EditorRoot>
             {!isLoaded ? (
               <div className="flex justify-center items-center py-20 text-sm text-zinc-500">Loading form...</div>
@@ -999,6 +1034,48 @@ function FormEditorContent() {
               </EditorContent>
             )}
           </EditorRoot>
+
+          {/* Light-themed Template Selection Boxes (positioned below the first line, always mounted for smooth transition) */}
+          <div
+            className={`transition-all duration-500 ease-in-out ${
+              isLoaded && formTitle.trim() === "" && isEditorEmpty
+                ? "opacity-100 translate-y-0 scale-100 max-h-[500px] mt-10"
+                : "opacity-0 -translate-y-4 scale-95 max-h-0 overflow-hidden mt-0 pointer-events-none"
+            }`}
+          >
+            <div className="p-6 bg-zinc-50/50 border border-zinc-200/80 rounded-2xl">
+              <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">Start with a template</h3>              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                {TEMPLATES.map((template) => {
+                  const complexity = template.id === "contact-form" ? "1/3" : template.id === "product-survey" ? "2/3" : "3/3";
+                  return (
+                    <button
+                      key={template.id}
+                      onClick={() => handleLoadTemplate(template)}
+                      className="text-left bg-white border border-zinc-200/60 hover:border-blue-400/80 rounded-md hover:shadow-sm hover:scale-[1.01] active:scale-[0.99] transition-all flex flex-col justify-between group cursor-pointer p-3"
+                    >
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md text-zinc-600 bg-zinc-50 border border-zinc-100/80">
+                            Complexity: {complexity}
+                          </span>
+                        </div>
+                        <h4 className="text-xs font-bold text-zinc-600 group-hover:text-zinc-800 transition-colors mb-1">
+                          {template.title.replace(/^\d+\.\s*/, "")}
+                        </h4>
+                        <p className="text-[10px] text-zinc-400 leading-normal">
+                          {template.description}
+                        </p>
+                      </div>
+                      <span className="text-[9px] font-bold text-blue-600 group-hover:text-blue-700 transition-colors mt-3 block">
+                        Apply Template &rarr;
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Publish Success Modal */}

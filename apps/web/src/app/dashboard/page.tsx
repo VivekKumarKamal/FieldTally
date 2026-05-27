@@ -4,9 +4,16 @@ import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, FileText, Globe, Pencil, Trash2, Clock, AlertCircle, ClipboardList } from "lucide-react";
+import { Plus, FileText, Globe, Pencil, Trash2, Clock, AlertCircle, ClipboardList, Compass } from "lucide-react";
 import { parseStoredDraft } from "../../lib/formActions";
 import * as Popover from "@radix-ui/react-popover";
+import { TEMPLATES, createFormFromTemplate } from "../../lib/templates";
+
+const TEMPLATE_ICONS: Record<string, any> = {
+  Compass: Compass,
+  ClipboardList: ClipboardList,
+  AlertCircle: AlertCircle,
+};
 
 type FormRow = {
   id: string;
@@ -257,6 +264,47 @@ export default function Dashboard() {
             </div>
           </div>
         )}
+
+        {/* Templates section */}
+        <div className="mb-10">
+          <h2 className="text-sm font-bold text-zinc-400 uppercase tracking-wider mb-4">Start with a Template</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {TEMPLATES.map((template) => {
+              const Icon = TEMPLATE_ICONS[template.iconName] || FileText;
+              return (
+                <button
+                  key={template.id}
+                  onClick={async () => {
+                    const path = await createFormFromTemplate(template, user?.id || null);
+                    router.push(path);
+                  }}
+                  className="text-left bg-white border border-zinc-200/80 rounded-xl p-5 hover:border-zinc-300 hover:shadow-sm transition-all flex flex-col justify-between group cursor-pointer"
+                >
+                  <div>
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider bg-zinc-50 border border-zinc-200/60 px-2 py-0.5 rounded">
+                        {template.category}
+                      </span>
+                      <Icon className="w-5 h-5 text-zinc-400 group-hover:text-zinc-700 transition-colors" />
+                    </div>
+                    <h3 className="text-sm font-bold text-zinc-800 group-hover:text-zinc-900 transition-colors mb-1">
+                      {template.title}
+                    </h3>
+                    <p className="text-xs text-zinc-500 leading-relaxed">
+                      {template.description}
+                    </p>
+                  </div>
+                  <div className="mt-4 flex items-center gap-1 text-[11px] font-semibold text-blue-600 group-hover:text-blue-700 transition-colors">
+                    <span>Use template</span>
+                    <svg className="w-3.5 h-3.5 transform group-hover:translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold text-zinc-900">Your Forms</h2>
