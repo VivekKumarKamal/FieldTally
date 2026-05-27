@@ -105,6 +105,15 @@ function extractTextFromContent(content?: any[]): string {
 function formatCellValue(val: any): string {
   if (val == null || val === "") return "—";
   if (Array.isArray(val)) return val.join(", ");
+  if (typeof val === "object" && val.latitude != null && val.longitude != null) {
+    return `${val.latitude.toFixed(6)}, ${val.longitude.toFixed(6)}`;
+  }
+  if (typeof val === "string" && val.startsWith("http") && val.includes("fieldtally")) {
+    if (val.includes("signature") || val.endsWith(".png")) {
+      return "Signature Captured";
+    }
+    return "Image File";
+  }
   return String(val);
 }
 
@@ -264,7 +273,14 @@ function getChartData(col: QuestionColumn, submissions: Submission[]) {
         }
       }
     } else {
-      const item = String(val);
+      let item = "";
+      if (typeof val === "object" && val.latitude != null && val.longitude != null) {
+        item = `Lat: ${val.latitude.toFixed(4)}, Lng: ${val.longitude.toFixed(4)}`;
+      } else if (typeof val === "string" && val.startsWith("http") && val.includes("fieldtally")) {
+        item = (val.includes("signature") || val.endsWith(".png")) ? "Signature Captured" : "Image File";
+      } else {
+        item = String(val);
+      }
       counts[item] = (counts[item] || 0) + 1;
       totalResponses++;
     }
@@ -1031,16 +1047,53 @@ function SubmissionsContent() {
                           <td className="px-4 py-3 text-zinc-500 whitespace-nowrap">
                             {formatDateTime(sub.filled_at)}
                           </td>
-                          {columns.map((col) => (
-                            <td
-                              key={col.id}
-                              className="px-4 py-3 text-zinc-700 max-w-[300px]"
-                            >
-                              <span className="block truncate" title={formatCellValue(sub.data[col.id])}>
-                                {formatCellValue(sub.data[col.id])}
-                              </span>
-                            </td>
-                          ))}
+                          {columns.map((col) => {
+                            const val = sub.data[col.id];
+                            const isGps = col.type === "gpsAnswerBlock" && val && val.latitude != null && val.longitude != null;
+                            const isImage = col.type === "imageAnswerBlock" && val && typeof val === "string" && val.startsWith("http");
+                            const isSignature = col.type === "signatureAnswerBlock" && val && typeof val === "string" && val.startsWith("http");
+                            return (
+                              <td
+                                key={col.id}
+                                className="px-4 py-2 text-zinc-700 max-w-[300px]"
+                              >
+                                {isGps ? (
+                                  <a
+                                    href={`https://www.google.com/maps?q=${val.latitude},${val.longitude}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline bg-blue-50/70 border border-blue-100 px-2 py-1 rounded-md transition-colors"
+                                  >
+                                    <span>{val.latitude.toFixed(5)}, {val.longitude.toFixed(5)}</span>
+                                  </a>
+                                ) : isImage ? (
+                                  <a
+                                    href={val}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-block relative w-10 h-10 border border-zinc-200 rounded overflow-hidden bg-zinc-50 hover:ring-2 hover:ring-blue-100 transition-all"
+                                    title="View Full Image"
+                                  >
+                                    <img src={val} alt="Submission asset" className="w-full h-full object-cover" />
+                                  </a>
+                                ) : isSignature ? (
+                                  <a
+                                    href={val}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-block relative w-16 h-8 border border-zinc-200 rounded overflow-hidden bg-zinc-50 hover:ring-2 hover:ring-blue-100 transition-all p-0.5"
+                                    title="View Signature"
+                                  >
+                                    <img src={val} alt="Signature asset" className="w-full h-full object-contain" />
+                                  </a>
+                                ) : (
+                                  <span className="block truncate" title={formatCellValue(val)}>
+                                    {formatCellValue(val)}
+                                  </span>
+                                )}
+                              </td>
+                            );
+                          })}
                         </tr>
                       ))}
                     </tbody>

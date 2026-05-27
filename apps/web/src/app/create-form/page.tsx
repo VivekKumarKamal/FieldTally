@@ -20,7 +20,7 @@ import {
   Underline as UnderlineIcon, Link as LinkIcon,
   RefreshCw, ChevronRight,
   Type, Hash, Mail, Phone, Link2, Calendar, Clock, AlignLeft,
-  CheckSquare, CircleDot,
+  CheckSquare, CircleDot, MapPin, Image, PenTool,
   Heading1, Heading2, Heading3, List, ListOrdered, Cloud, Check, History, CloudUpload, CloudOff, CloudCheck, ChevronLeft,
   FileDown
 } from "lucide-react";
@@ -54,6 +54,9 @@ const TURN_INTO_ICONS: Record<string, React.ReactNode> = {
   linkAnswerBlock: <Link2 size={16} />,
   dateAnswerBlock: <Calendar size={16} />,
   timeAnswerBlock: <Clock size={16} />,
+  gpsAnswerBlock: <MapPin size={16} />,
+  imageAnswerBlock: <Image size={16} />,
+  signatureAnswerBlock: <PenTool size={16} />,
   checkboxBlock: <CheckSquare size={16} />,
   multipleChoiceBlock: <CircleDot size={16} />,
 };
@@ -80,6 +83,9 @@ const BLOCK_TYPES_WITH_IDS = new Set([
   "checkboxBlock",
   "multipleChoiceBlock",
   "logicBlock",
+  "gpsAnswerBlock",
+  "imageAnswerBlock",
+  "signatureAnswerBlock",
 ]);
 
 type ClipboardCapableView = TiptapEditor["view"] & {

@@ -224,6 +224,9 @@ body {
 .tiptap .link-answer-block,
 .tiptap .date-answer-block,
 .tiptap .time-answer-block,
+.tiptap .gps-answer-block,
+.tiptap .image-answer-block,
+.tiptap .signature-answer-block,
 .tiptap div[data-type="checkbox-block"],
 .tiptap div[data-type="multiple-choice-block"] {
   margin: 28px 0;
@@ -238,6 +241,9 @@ body {
 .tiptap .link-answer-title,
 .tiptap .date-answer-title,
 .tiptap .time-answer-title,
+.tiptap .gps-answer-title,
+.tiptap .image-answer-title,
+.tiptap .signature-answer-title,
 .tiptap div[data-type="checkbox-title"],
 .tiptap div[data-type="multiple-choice-title"] {
   font-size: 1.1em;

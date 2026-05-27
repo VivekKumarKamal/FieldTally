@@ -28,6 +28,9 @@ export const TURN_INTO_TARGETS: Record<string, TurnIntoTarget> = {
   linkAnswerBlock:     { nodeType: "linkAnswerBlock",     label: "Link",            category: "simple",   group: "question" },
   dateAnswerBlock:     { nodeType: "dateAnswerBlock",     label: "Date",            category: "simple",   group: "question" },
   timeAnswerBlock:     { nodeType: "timeAnswerBlock",     label: "Time",            category: "simple",   group: "question" },
+  gpsAnswerBlock:      { nodeType: "gpsAnswerBlock",      label: "GPS Location",    category: "simple",   group: "question" },
+  imageAnswerBlock:     { nodeType: "imageAnswerBlock",     label: "Image Upload",    category: "simple",   group: "question" },
+  signatureAnswerBlock: { nodeType: "signatureAnswerBlock", label: "Signature",       category: "simple",   group: "question" },
   checkboxBlock:       { nodeType: "checkboxBlock",       label: "Checkboxes",      category: "compound", group: "question", titleChild: "checkboxTitle", optionChild: "checkboxOption" },
   multipleChoiceBlock: { nodeType: "multipleChoiceBlock", label: "Multiple Choice", category: "compound", group: "question", titleChild: "multipleChoiceTitle", optionChild: "multipleChoiceOption" },
 };

@@ -304,6 +304,15 @@ function ExportPdfContent() {
           border: none !important;
           background-color: transparent !important;
         }
+        .page-sheet.inputs-lines .signature-print-box,
+        .page-sheet.inputs-lines .image-print-box {
+          border-top: none !important;
+          border-left: none !important;
+          border-right: none !important;
+          border-bottom: 1px solid #d4d4d8 !important;
+          border-radius: 0 !important;
+          background-color: transparent !important;
+        }
         .page-sheet .text-xs {
           font-size: 0.75em !important;
         }
@@ -633,7 +642,7 @@ function ExportPdfContent() {
           <div className="flex flex-col gap-3 mt-8">
             <button
               onClick={handlePrint}
-              className="w-full bg-blue-600 hover:bg-blue-500 active:scale-[0.98] text-white font-medium text-sm rounded-lg py-1.5 px-2 shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all duration-150"
+              className="w-full bg-zinc-800 hover:bg-zinc-600 active:scale-[0.98] text-white font-medium text-sm rounded-lg py-1.5 px-2 shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all duration-150"
             >
               <Printer size={16} />
               <span>Print / Export PDF ({pages.length} {pages.length === 1 ? "page" : "pages"})</span>

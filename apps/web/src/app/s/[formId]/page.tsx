@@ -25,6 +25,25 @@ function SubmissionPageContent() {
   useEffect(() => {
     async function loadForm() {
       if (!formId) return;
+
+      if (formId === "preview") {
+        const raw = localStorage.getItem("preview_form_schema");
+        const title = localStorage.getItem("preview_form_title") || "Preview Form";
+        if (raw) {
+          try {
+            setFormSchema(JSON.parse(raw));
+            setFormTitle(title);
+            setFormVersionNum(1);
+            setLoading(false);
+            return;
+          } catch (e) {
+            console.error("Failed to parse preview schema", e);
+          }
+        }
+        setError("Preview schema not found in local storage.");
+        setLoading(false);
+        return;
+      }
       
       try {
         // Fetch form status to ensure it's accessible and get its data
@@ -126,6 +145,12 @@ function SubmissionPageContent() {
   }, [formId, versionQuery]);
 
   const handleSubmit = async (answers: any) => {
+    if (formId === "preview") {
+      console.log("Preview submission data (database insert bypassed):", answers);
+      setSubmitted(true);
+      return;
+    }
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
       

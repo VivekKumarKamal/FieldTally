@@ -18,6 +18,9 @@ import {
   Clock,
   AlignLeft,
   GitBranch,
+  MapPin,
+  Image,
+  PenTool,
 } from "lucide-react";
 
 import { createSuggestionItems } from "novel";
@@ -279,6 +282,48 @@ export const suggestionItems = createSuggestionItems([
         .focus()
         .deleteRange(range)
         .setNode("timeAnswerBlock")
+        .run();
+    },
+  },
+  {
+    title: "GPS Location",
+    description: "Capture the responder's current GPS location.",
+    searchTerms: ["gps", "location", "coordinates", "map"],
+    icon: <MapPin size={18} />,
+    command: ({ editor, range }) => {
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .setNode("gpsAnswerBlock")
+        .run();
+    },
+  },
+  {
+    title: "Image Upload",
+    description: "Allow users to upload an image from their device.",
+    searchTerms: ["image", "photo", "upload", "file", "camera", "picture"],
+    icon: <Image size={18} />,
+    command: ({ editor, range }) => {
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .setNode("imageAnswerBlock")
+        .run();
+    },
+  },
+  {
+    title: "Signature",
+    description: "Add a drawing canvas to capture a signature.",
+    searchTerms: ["signature", "sign", "draw", "pen", "canvas"],
+    icon: <PenTool size={18} />,
+    command: ({ editor, range }) => {
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .setNode("signatureAnswerBlock")
         .run();
     },
   },

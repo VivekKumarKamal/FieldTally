@@ -24,6 +24,9 @@ import { DateAnswerBlock } from "../extensions/dateAnswer";
 import { TimeAnswerBlock } from "../extensions/timeAnswer";
 import { LongAnswerBlock } from "../extensions/longAnswer";
 import { LogicBlock } from "../extensions/logicBlock";
+import { GpsAnswerBlock } from "../extensions/gpsAnswer";
+import { ImageAnswerBlock } from "../extensions/imageAnswer";
+import { SignatureAnswerBlock } from "../extensions/signatureAnswer";
 
 const ID_BLOCK_TYPES = [
   "shortAnswerBlock",
@@ -37,6 +40,9 @@ const ID_BLOCK_TYPES = [
   "checkboxBlock",
   "multipleChoiceBlock",
   "logicBlock",
+  "gpsAnswerBlock",
+  "imageAnswerBlock",
+  "signatureAnswerBlock",
 ];
 
 export const RequiredAttribute = Extension.create({
@@ -56,6 +62,9 @@ export const RequiredAttribute = Extension.create({
           "multipleChoiceBlock",
           "longAnswerBlock",
           "logicBlock",
+          "gpsAnswerBlock",
+          "imageAnswerBlock",
+          "signatureAnswerBlock",
         ],
         attributes: {
           required: {
@@ -82,7 +91,7 @@ const dragHandle = GlobalDragHandle.configure({
   // (2) handle left position (blockLeft - width). Keep it small so detection
   // doesn't overshoot into the wrong block.
   dragHandleWidth: 100,
-  customNodes: ["checkbox-block", "multiple-choice-block", "short-answer-block", "number-answer-block", "email-answer-block", "phone-answer-block", "link-answer-block", "date-answer-block", "time-answer-block", "long-answer-block", "logic-block"],
+  customNodes: ["checkbox-block", "multiple-choice-block", "short-answer-block", "number-answer-block", "email-answer-block", "phone-answer-block", "link-answer-block", "date-answer-block", "time-answer-block", "long-answer-block", "logic-block", "gps-answer-block", "image-answer-block", "signature-answer-block"],
 });
 
 // TODO I am using cx here to get tailwind autocomplete working, idk if someone else can write a regex to just capture the class key in objects
@@ -110,6 +119,9 @@ const placeholder = Placeholder.configure({
     if (node.type.name === "dateAnswerBlock") return "Type your question...";
     if (node.type.name === "timeAnswerBlock") return "Type your question...";
     if (node.type.name === "longAnswerBlock") return "Type your question...";
+    if (node.type.name === "gpsAnswerBlock") return "Type your question...";
+    if (node.type.name === "imageAnswerBlock") return "Type your question...";
+    if (node.type.name === "signatureAnswerBlock") return "Type your question...";
 
     // Check parent context for lists/quotes
     const $pos = editor.state.doc.resolve(pos);
@@ -264,6 +276,9 @@ export const defaultExtensions = [
   TimeAnswerBlock,
   LongAnswerBlock,
   LogicBlock,
+  GpsAnswerBlock,
+  ImageAnswerBlock,
+  SignatureAnswerBlock,
   RequiredAttribute,
   dragHandle,
   starterKit,

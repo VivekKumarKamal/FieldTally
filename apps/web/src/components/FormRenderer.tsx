@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import type { ElementType, ReactNode } from "react";
-import { Send, CheckCircle2 } from "lucide-react";
+import { Send, CheckCircle2, MapPin, RefreshCw, Upload, Loader2, Image, PenTool, Trash } from "lucide-react";
+import { useParams } from "next/navigation";
+import { supabase } from "../lib/supabase";
 import { evaluateLogic, LogicBlockNode } from "../lib/logic";
 
 // ─── Text rendering helpers ──────────────────────────────
@@ -99,6 +101,107 @@ export default function FormRenderer({ schema, title, progressBarOffset, onSubmi
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const [submitted, setSubmitted] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [gpsState, setGpsState] = useState<Record<string, { loading: boolean; error: string | null }>>({});
+  const [uploadState, setUploadState] = useState<Record<string, { loading: boolean; error: string | null }>>({});
+
+  const params = useParams() || {};
+  const formId = (params.formId as string) || "preview";
+
+  const handleImageUpload = useCallback(async (id: string, file: File, formId: string) => {
+    if (!file) return;
+    setUploadState(prev => ({ ...prev, [id]: { loading: true, error: null } }));
+    
+    try {
+      if (formId === "preview") {
+        const localUrl = URL.createObjectURL(file);
+        setAnswers(prev => ({ ...prev, [id]: localUrl }));
+        setErrors(prev => {
+          if (prev[id]) { const n = { ...prev }; delete n[id]; return n; }
+          return prev;
+        });
+        setUploadState(prev => ({ ...prev, [id]: { loading: false, error: null } }));
+        return;
+      }
+
+      const fileExt = file.name.split('.').pop() || 'png';
+      const fileName = `${id}-${Date.now()}.${fileExt}`;
+      const filePath = `submissions/${formId}/${fileName}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('fieldtally')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from('fieldtally').getPublicUrl(filePath);
+      if (!data?.publicUrl) throw new Error("Failed to resolve URL");
+
+      setAnswers(prev => ({ ...prev, [id]: data.publicUrl }));
+      setErrors(prev => {
+        if (prev[id]) { const n = { ...prev }; delete n[id]; return n; }
+        return prev;
+      });
+      setUploadState(prev => ({ ...prev, [id]: { loading: false, error: null } }));
+    } catch (err: any) {
+      console.error("Image upload failed:", err);
+      setUploadState(prev => ({ ...prev, [id]: { loading: false, error: err.message || "Failed to upload image" } }));
+    }
+  }, []);
+
+  const captureLocationForField = useCallback((id: string) => {
+    setGpsState(prev => ({ ...prev, [id]: { loading: true, error: null } }));
+    
+    if (typeof window === "undefined" || !navigator.geolocation) {
+      setGpsState(prev => ({ ...prev, [id]: { loading: false, error: "Geolocation not supported by browser" } }));
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const coords = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+        };
+        setAnswers(prev => ({ ...prev, [id]: coords }));
+        setErrors(prev => {
+          if (prev[id]) { const n = { ...prev }; delete n[id]; return n; }
+          return prev;
+        });
+        setGpsState(prev => ({ ...prev, [id]: { loading: false, error: null } }));
+      },
+      (err) => {
+        console.error("GPS Error for field", id, err);
+        let errorMsg = "Failed to retrieve location";
+        if (err.code === 1) {
+          errorMsg = "Permission denied. Please allow location access.";
+        } else if (err.code === 2) {
+          errorMsg = "Location unavailable.";
+        } else if (err.code === 3) {
+          errorMsg = "Location request timed out.";
+        }
+        setGpsState(prev => ({ ...prev, [id]: { loading: false, error: errorMsg } }));
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  }, []);
+
+  // Auto-request location on load if there's any required GPS block
+  useEffect(() => {
+    if (!schema?.content) return;
+    const requiredGpsBlocks = schema.content.filter(
+      (node: any) =>
+        node.type === "gpsAnswerBlock" &&
+        node.attrs?.id &&
+        (node.attrs.required === true || node.attrs.required === "true")
+    );
+
+    if (requiredGpsBlocks.length > 0) {
+      requiredGpsBlocks.forEach((node: any) => {
+        captureLocationForField(node.attrs.id);
+      });
+    }
+  }, [schema, captureLocationForField]);
 
   // Build logic nodes from all doc nodes
   const logicNodes: LogicBlockNode[] = useMemo(() => {
@@ -159,8 +262,16 @@ export default function FormRenderer({ schema, title, progressBarOffset, onSubmi
         const val = answers[id];
         const isEmpty = val == null || val === "" || (Array.isArray(val) && val.length === 0);
 
-        if (req && isEmpty) {
-          newErrors[id] = "This field is required";
+        if (req && (isEmpty || (node.type === "gpsAnswerBlock" && (!val?.latitude || !val?.longitude)))) {
+          if (node.type === "gpsAnswerBlock") {
+            newErrors[id] = "Location access is required";
+          } else if (node.type === "imageAnswerBlock") {
+            newErrors[id] = "Image upload is required";
+          } else if (node.type === "signatureAnswerBlock") {
+            newErrors[id] = "Signature drawing is required";
+          } else {
+            newErrors[id] = "This field is required";
+          }
           continue;
         }
 
@@ -269,6 +380,11 @@ export default function FormRenderer({ schema, title, progressBarOffset, onSubmi
           errors={errors}
           visibility={logicResult.visibility}
           isPrinting={isPrinting}
+          gpsState={gpsState}
+          captureLocationForField={captureLocationForField}
+          formId={formId}
+          uploadState={uploadState}
+          handleImageUpload={handleImageUpload}
         />
       ))}
 
@@ -285,11 +401,16 @@ export default function FormRenderer({ schema, title, progressBarOffset, onSubmi
 
 // ─── Universal Node Renderer ─────────────────────────────
 
-export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors, visibility, isPrinting = false }: {
+export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors, visibility, isPrinting = false, gpsState, captureLocationForField, formId, uploadState, handleImageUpload }: {
   node: any; answers: Record<string, any>; updateAnswer: (id: string, v: any) => void;
   toggleCheckbox: (id: string, opt: string) => void; errors: Record<string, string>;
   visibility: Record<string, boolean>;
   isPrinting?: boolean;
+  gpsState?: Record<string, { loading: boolean; error: string | null }>;
+  captureLocationForField?: (id: string) => void;
+  formId?: string;
+  uploadState?: Record<string, { loading: boolean; error: string | null }>;
+  handleImageUpload?: (id: string, file: File, formId: string) => void;
 }) {
   const id = node.attrs?.id;
 
@@ -320,7 +441,7 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
     return (
       <blockquote>
         {(node.content || []).map((c: any, i: number) => (
-          <RenderNode key={i} node={c} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} />
+          <RenderNode key={i} node={c} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} gpsState={gpsState} captureLocationForField={captureLocationForField} formId={formId} uploadState={uploadState} handleImageUpload={handleImageUpload} />
         ))}
       </blockquote>
     );
@@ -336,28 +457,28 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
 
   // ── Bullet list ──
   if (node.type === "bulletList") {
-    return <ul>{(node.content || []).map((li: any, i: number) => <RenderNode key={i} node={li} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} />)}</ul>;
+    return <ul>{(node.content || []).map((li: any, i: number) => <RenderNode key={i} node={li} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} gpsState={gpsState} captureLocationForField={captureLocationForField} formId={formId} uploadState={uploadState} handleImageUpload={handleImageUpload} />)}</ul>;
   }
 
   // ── Ordered list ──
   if (node.type === "orderedList") {
-    return <ol>{(node.content || []).map((li: any, i: number) => <RenderNode key={i} node={li} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} />)}</ol>;
+    return <ol>{(node.content || []).map((li: any, i: number) => <RenderNode key={i} node={li} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} gpsState={gpsState} captureLocationForField={captureLocationForField} formId={formId} uploadState={uploadState} handleImageUpload={handleImageUpload} />)}</ol>;
   }
 
   // ── List item ──
   if (node.type === "listItem") {
-    return <li>{(node.content || []).map((c: any, i: number) => <RenderNode key={i} node={c} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} />)}</li>;
+    return <li>{(node.content || []).map((c: any, i: number) => <RenderNode key={i} node={c} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} gpsState={gpsState} captureLocationForField={captureLocationForField} formId={formId} uploadState={uploadState} handleImageUpload={handleImageUpload} />)}</li>;
   }
 
   // ── Task list ──
   if (node.type === "taskList") {
-    return <ul data-type="taskList">{(node.content || []).map((li: any, i: number) => <RenderNode key={i} node={li} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} />)}</ul>;
+    return <ul data-type="taskList">{(node.content || []).map((li: any, i: number) => <RenderNode key={i} node={li} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} gpsState={gpsState} captureLocationForField={captureLocationForField} formId={formId} uploadState={uploadState} handleImageUpload={handleImageUpload} />)}</ul>;
   }
   if (node.type === "taskItem") {
     return (
       <li data-checked={node.attrs?.checked ? "true" : "false"}>
         <label><input type="checkbox" readOnly checked={node.attrs?.checked} /></label>
-        <div>{(node.content || []).map((c: any, i: number) => <RenderNode key={i} node={c} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} />)}</div>
+        <div>{(node.content || []).map((c: any, i: number) => <RenderNode key={i} node={c} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} gpsState={gpsState} captureLocationForField={captureLocationForField} formId={formId} uploadState={uploadState} handleImageUpload={handleImageUpload} />)}</div>
       </li>
     );
   }
@@ -570,5 +691,442 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
     );
   }
 
+  // ── GPS Answer Block ──
+  if (node.type === "gpsAnswerBlock") {
+    const value = answers[id];
+    const isCaptured = !!(value?.latitude && value?.longitude);
+    const fieldGpsState = gpsState?.[id] || { loading: false, error: null };
+
+    return (
+      <div id={id ? `field-${id}` : undefined} className="gps-answer-block" data-required={required ? "true" : undefined}>
+        <div className="question-title-row">
+          <div className="gps-answer-title outline-none">{renderInlineContent(node.content)}</div>
+          {required && <span className="required-badge">*</span>}
+        </div>
+        
+        <div className="mt-2">
+          {isPrinting ? (
+            <div className="flex gap-6 w-full">
+              <div className="flex-1 flex flex-col gap-1">
+                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Latitude</span>
+                <input
+                  type="text"
+                  className="block-placeholder-input !mt-1 !mb-0"
+                  placeholder=""
+                  readOnly
+                  value={value?.latitude != null ? value.latitude.toString() : ""}
+                />
+              </div>
+              <div className="flex-1 flex flex-col gap-1">
+                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Longitude</span>
+                <input
+                  type="text"
+                  className="block-placeholder-input !mt-1 !mb-0"
+                  placeholder=""
+                  readOnly
+                  value={value?.longitude != null ? value.longitude.toString() : ""}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className={`mt-2 flex flex-col gap-2 p-4 border rounded-xl bg-white shadow-xs transition-all ${hasError ? "border-red-300 bg-red-25/25" : "border-zinc-200"}`}>
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  {/* Checkbox indicator */}
+                  <div 
+                    className="w-5 h-5 rounded border flex items-center justify-center transition-all select-none"
+                    style={{ 
+                      background: isCaptured ? "#22c55e" : "#f4f4f5", 
+                      borderColor: isCaptured ? "#22c55e" : "#d4d4d8" 
+                    }}
+                  >
+                    {isCaptured && (
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M2.5 6L5 8.5L9.5 3.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    )}
+                  </div>
+
+                  {/* Status information */}
+                  <div className="flex flex-col">
+                    <span className="text-sm font-semibold text-zinc-800">
+                      {isCaptured 
+                        ? "Location Captured" 
+                        : fieldGpsState.loading 
+                          ? "Acquiring coordinates..." 
+                          : "Location not captured"
+                      }
+                    </span>
+                    
+                    {isCaptured && (
+                      <span className="text-xs text-zinc-500 font-medium tabular-nums mt-0.5">
+                        Lat: {value.latitude.toFixed(6)}, Lng: {value.longitude.toFixed(6)}
+                        {value.accuracy && ` (±${Math.round(value.accuracy)}m)`}
+                      </span>
+                    )}
+
+                    {!isCaptured && fieldGpsState.error && (
+                      <span className="text-xs text-red-500 font-semibold mt-0.5">
+                        {fieldGpsState.error}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Action button */}
+                {!isPrinting && (
+                  <div>
+                    {required ? (
+                      (!isCaptured && !fieldGpsState.loading) && (
+                        <button
+                          type="button"
+                          onClick={() => captureLocationForField?.(id)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-zinc-700 bg-zinc-100 hover:bg-zinc-200 border border-zinc-200 hover:border-zinc-300 rounded-lg shadow-2xs transition-all cursor-pointer"
+                        >
+                          <RefreshCw size={13} className={fieldGpsState.loading ? "animate-spin" : ""} />
+                          <span>Retry</span>
+                        </button>
+                      )
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={fieldGpsState.loading}
+                        onClick={() => captureLocationForField?.(id)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-200 disabled:text-zinc-400 rounded-lg shadow-2xs transition-all cursor-pointer"
+                      >
+                        {fieldGpsState.loading ? (
+                          <Loader2 size={13} className="animate-spin" />
+                        ) : isCaptured ? (
+                          <RefreshCw size={13} />
+                        ) : (
+                          <Upload size={13} />
+                        )}
+                        <span>{isCaptured ? "Update Location" : "Capture Location"}</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+        {hasError && <p className="text-red-500 text-xs mt-1 font-medium">{errors[id]}</p>}
+      </div>
+    );
+  }
+
+  // ── Image Answer Block ──
+  if (node.type === "imageAnswerBlock") {
+    const value = answers[id];
+    const fieldUploadState = uploadState?.[id] || { loading: false, error: null };
+
+    return (
+      <div id={id ? `field-${id}` : undefined} className="image-answer-block" data-required={required ? "true" : undefined}>
+        <div className="question-title-row">
+          <div className="image-answer-title outline-none">{renderInlineContent(node.content)}</div>
+          {required && <span className="required-badge">*</span>}
+        </div>
+        
+        <div className="mt-2">
+          {value ? (
+            <div className="relative w-full max-w-sm rounded-lg overflow-hidden border border-zinc-200 bg-zinc-50 p-2 group">
+              <img src={value} alt="Upload preview" className="w-full max-h-48 object-contain rounded" />
+              {!isPrinting && (
+                <button
+                  type="button"
+                  onClick={() => updateAnswer(id, null)}
+                  className="absolute top-4 right-4 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 hover:scale-105 transition-all cursor-pointer shadow-xs animate-in fade-in"
+                  title="Remove Image"
+                >
+                  <Trash size={14} />
+                </button>
+              )}
+            </div>
+          ) : (
+            <div 
+              className={`image-print-box flex flex-col items-center justify-center border border-dashed rounded-xl bg-zinc-50 hover:bg-zinc-100/70 transition-all cursor-pointer relative ${hasError ? "border-red-300 bg-red-25/25" : "border-zinc-200"}`}
+              style={{ minHeight: isPrinting ? "300px" : "auto", padding: isPrinting ? "40px" : "24px" }}
+            >
+              {!isPrinting && (
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file && formId && handleImageUpload) {
+                      handleImageUpload(id, file, formId);
+                    }
+                  }}
+                  disabled={fieldUploadState.loading}
+                />
+              )}
+              {fieldUploadState.loading ? (
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+                  <span className="text-xs text-zinc-500 font-medium">Uploading image...</span>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-1.5 text-center select-none">
+                  <Upload className="w-6 h-6 text-zinc-400" />
+                  <span className="text-sm font-semibold text-zinc-700">
+                    {isPrinting ? "Attach the image here" : "Upload Image File"}
+                  </span>
+                  {!isPrinting && <span className="text-xs text-zinc-400">Click or drag image file here</span>}
+                </div>
+              )}
+              {fieldUploadState.error && (
+                <span className="text-xs text-red-500 font-semibold mt-2">{fieldUploadState.error}</span>
+              )}
+            </div>
+          )}
+        </div>
+        {hasError && <p className="text-red-500 text-xs mt-1 font-medium">{errors[id]}</p>}
+      </div>
+    );
+  }
+
+  // ── Signature Answer Block ──
+  if (node.type === "signatureAnswerBlock") {
+    const value = answers[id];
+
+    return (
+      <div id={id ? `field-${id}` : undefined} className="signature-answer-block" data-required={required ? "true" : undefined}>
+        <div className="question-title-row">
+          <div className="signature-answer-title outline-none">{renderInlineContent(node.content)}</div>
+          {required && <span className="required-badge">*</span>}
+        </div>
+        
+        <div className="mt-2">
+          {isPrinting ? (
+            value ? (
+              <div 
+                className="border border-zinc-200 rounded-lg p-2 flex items-center justify-center relative overflow-hidden select-none"
+                style={{ width: "300px", aspectRatio: "7/3" }}
+              >
+                <img src={value} alt="Signature" className="h-full max-w-full object-contain" />
+              </div>
+            ) : (
+              <div 
+                className="signature-print-box border border-zinc-300 border-dashed rounded-lg bg-zinc-50/50 flex flex-col justify-end p-3 relative overflow-hidden select-none"
+                style={{ width: "300px", aspectRatio: "7/3" }}
+              >
+                <div className="absolute top-2 right-2 flex items-center gap-1">
+                  <PenTool size={10} className="text-zinc-400" />
+                  <span className="text-[8px] font-bold text-zinc-400 uppercase tracking-wider">Sign here</span>
+                </div>
+              </div>
+            )
+          ) : (
+            formId && (
+              <SignaturePad
+                id={id}
+                formId={formId}
+                value={value}
+                required={required}
+                onChange={(url) => updateAnswer(id, url)}
+                hasError={hasError}
+              />
+            )
+          )}
+        </div>
+        {hasError && <p className="text-red-500 text-xs mt-1 font-medium">{errors[id]}</p>}
+      </div>
+    );
+  }
+
   return null;
+}
+
+// ─── Interactive Signature Pad ──────────────────────────
+
+interface SignaturePadProps {
+  id: string;
+  formId: string;
+  value?: string;
+  required?: boolean;
+  onChange: (url: string | null) => void;
+  hasError?: boolean;
+}
+
+export function SignaturePad({ id, formId, value, onChange, hasError }: SignaturePadProps) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState("");
+  const uploadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || value) return;
+
+    // Fix internal resolution to exactly 500x300 (5:3 aspect ratio)
+    canvas.width = 500;
+    canvas.height = 300;
+
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = "#18181b"; // zinc-900
+      ctx.lineWidth = 2.5; // Bold stroke for 500x300 resolution
+      ctxRef.current = ctx;
+    }
+  }, [value]);
+
+  const startDrawing = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !ctxRef.current) return;
+
+    canvas.setPointerCapture(e.pointerId);
+
+    const rect = canvas.getBoundingClientRect();
+    // Scale client mouse/touch position to fixed 500x300 canvas coordinate space
+    const x = ((e.clientX - rect.left) / rect.width) * 500;
+    const y = ((e.clientY - rect.top) / rect.height) * 300;
+
+    ctxRef.current.beginPath();
+    ctxRef.current.moveTo(x, y);
+    setIsDrawing(true);
+
+    if (uploadTimeoutRef.current) clearTimeout(uploadTimeoutRef.current);
+  };
+
+  const draw = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isDrawing || !ctxRef.current || !canvasRef.current) return;
+
+    const rect = canvasRef.current.getBoundingClientRect();
+    // Scale coordinates proportionally to canvas space
+    const x = ((e.clientX - rect.left) / rect.width) * 500;
+    const y = ((e.clientY - rect.top) / rect.height) * 300;
+
+    ctxRef.current.lineTo(x, y);
+    ctxRef.current.stroke();
+  };
+
+  const stopDrawing = () => {
+    if (!isDrawing) return;
+    setIsDrawing(false);
+
+    if (uploadTimeoutRef.current) clearTimeout(uploadTimeoutRef.current);
+    uploadTimeoutRef.current = setTimeout(uploadToStorage, 1500);
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas || !ctxRef.current) {
+      onChange(null);
+      setStatus("idle");
+      return;
+    }
+    ctxRef.current.clearRect(0, 0, canvas.width, canvas.height);
+    onChange(null);
+    setStatus("idle");
+    if (uploadTimeoutRef.current) clearTimeout(uploadTimeoutRef.current);
+  };
+
+  const uploadToStorage = async () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    setStatus("saving");
+
+    if (formId === "preview") {
+      const base64 = canvas.toDataURL("image/png");
+      onChange(base64);
+      setStatus("saved");
+      return;
+    }
+
+    // Upload will automatically be exactly 500x300 as fixed by canvas.width/height
+    canvas.toBlob(async (blob) => {
+      if (!blob) {
+        setStatus("error");
+        setErrorMessage("Failed to capture canvas");
+        return;
+      }
+
+      try {
+        const fileName = `${id}-${Date.now()}.png`;
+        const filePath = `submissions/${formId}/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('fieldtally')
+          .upload(filePath, blob, { contentType: 'image/png' });
+
+        if (uploadError) throw uploadError;
+
+        const { data } = supabase.storage.from('fieldtally').getPublicUrl(filePath);
+        if (!data?.publicUrl) throw new Error("Failed to get URL");
+
+        onChange(data.publicUrl);
+        setStatus("saved");
+      } catch (err: any) {
+        console.error("Signature save error:", err);
+        setStatus("error");
+        setErrorMessage(err.message || "Failed to upload signature");
+      }
+    }, 'image/png');
+  };
+
+  return (
+    <div className={`flex flex-col gap-2 p-4 border rounded-xl bg-white shadow-xs transition-all ${hasError ? "border-red-300 bg-red-25/25" : "border-zinc-200"}`}>
+      {value ? (
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-full aspect-[5/3] bg-zinc-50 border border-zinc-100 rounded-lg flex items-center justify-center p-2 relative overflow-hidden select-none">
+            <img src={value} alt="Signature" className="h-full max-w-full object-contain" />
+            <span className="absolute top-2 right-2 text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full border border-green-200">
+              Saved
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={clearCanvas}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-100 rounded-lg cursor-pointer transition-colors"
+          >
+            <Trash size={13} />
+            <span>Clear & Redraw</span>
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <div className="relative w-full aspect-[5/3] border border-zinc-200 border-dashed rounded-lg bg-zinc-50 overflow-hidden cursor-crosshair">
+            <canvas
+              ref={canvasRef}
+              onPointerDown={startDrawing}
+              onPointerMove={draw}
+              onPointerUp={stopDrawing}
+              className="w-full h-full touch-none"
+            />
+            <div className="absolute top-2 right-2 flex items-center gap-1.5 pointer-events-none select-none">
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all ${
+                status === "saving" 
+                  ? "text-blue-600 bg-blue-50 border-blue-200 animate-pulse" 
+                  : status === "error"
+                    ? "text-red-600 bg-red-50 border-red-200"
+                    : "text-zinc-400 bg-zinc-100 border-zinc-200"
+              }`}>
+                {status === "saving" ? "Saving..." : status === "error" ? "Error" : "Draw Signature"}
+              </span>
+            </div>
+            <div className="absolute bottom-6 left-6 right-6 border-t border-zinc-200 border-dotted pointer-events-none" />
+          </div>
+          
+          <div className="flex justify-between items-center">
+            <span className="text-[10px] text-zinc-400 font-medium">
+              {status === "error" ? errorMessage : "Signature is uploaded automatically 1.5s after lifting your pen."}
+            </span>
+            <button
+              type="button"
+              onClick={clearCanvas}
+              className="px-2 py-1 text-xs text-zinc-500 hover:text-zinc-800 transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
