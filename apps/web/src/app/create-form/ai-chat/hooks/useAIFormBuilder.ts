@@ -8,7 +8,7 @@ const READY_TOKEN = "READY_TO_GENERATE"
 export const useAIFormBuilder = (getCurrentSchema?: () => any) => {
   const [phase, setPhase] = useState<Phase>("eliciting")
   const [messages, setMessages] = useState<Message[]>([])
-  const [tone, setTone] = useState<ToneKey | null>(null)
+  const [tone, setTone] = useState<ToneKey | null>("professional")
   const [generatedSchema, setGeneratedSchema] = useState<DocSchema | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -105,7 +105,7 @@ export const useAIFormBuilder = (getCurrentSchema?: () => any) => {
   }, [])
 
   return {
-    phase, messages, tone, generatedSchema, error, loading,
+    phase, messages, tone, setTone, generatedSchema, error, loading,
     sendMessage, setToneAndStart, regenerate, editPrompt, acceptSchema
   }
 }

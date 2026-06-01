@@ -23,7 +23,7 @@ const SUGGESTIONS = [
 
 export default function ChatPanel({ isOpen, onClose, onApplySchema, currentFormTitle, getCurrentSchema }: ChatPanelProps) {
   const {
-    phase, messages, tone, generatedSchema, error, loading,
+    phase, messages, tone, setTone, generatedSchema, error, loading,
     sendMessage, setToneAndStart, regenerate, editPrompt, acceptSchema
   } = useAIFormBuilder(getCurrentSchema);
 
@@ -179,12 +179,13 @@ export default function ChatPanel({ isOpen, onClose, onApplySchema, currentFormT
 
   return (
     <div
-      className={`fixed top-14 right-0 h-[calc(100vh-3.5rem)] w-[420px] bg-white/95 backdrop-blur-xl border-l border-zinc-200/80 shadow-2xl flex flex-col z-[90] transition-all duration-300 ease-in-out transform ${
-        isOpen ? "translate-x-0" : "translate-x-full pointer-events-none"
+      data-ai-panel="true"
+      className={`fixed top-[72px] right-4 h-[calc(100vh-5.5rem)] w-[400px] bg-white border border-zinc-200 flex flex-col rounded-2xl z-[90] transition-all duration-300 ease-in-out transform ${
+        isOpen ? "translate-x-0" : "translate-x-[calc(100%+2rem)] pointer-events-none"
       }`}
     >
       {/* Drawer Header */}
-      <div className="h-14 border-b border-zinc-100 px-5 flex items-center justify-between shrink-0 bg-white/70 backdrop-blur-md">
+      <div className="h-14 border-b border-zinc-100 px-5 flex items-center justify-between shrink-0 rounded-t-2xl bg-zinc-50/50">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 bg-blue-600/10 rounded-lg flex items-center justify-center">
             <Sparkles className="w-4 h-4 text-blue-600 animate-pulse" />
@@ -410,7 +411,7 @@ export default function ChatPanel({ isOpen, onClose, onApplySchema, currentFormT
                 {SUGGESTIONS.map((chip, index) => (
                   <button
                     key={index}
-                    onClick={() => handleSendMessage(chip.prompt)}
+                    onClick={() => setInputVal(chip.prompt)}
                     className="text-left bg-zinc-50 hover:bg-zinc-100/80 active:bg-zinc-100 border border-zinc-200/50 rounded-xl px-3 py-2 text-xs text-zinc-600 hover:text-zinc-800 transition-colors flex items-center justify-between group cursor-pointer font-sans"
                   >
                     <span>{chip.label}</span>
@@ -422,15 +423,32 @@ export default function ChatPanel({ isOpen, onClose, onApplySchema, currentFormT
           )}
 
           {/* Input Form (only during elicitation phase) */}
-          {(phase === "eliciting") && (
-            <div className="p-4 border-t border-zinc-100 bg-white shrink-0">
-              {/* Current Tone Indicator */}
-              <div className="flex items-center gap-2 pb-3">
-                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tone:</span>
-                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold border bg-blue-50 border-blue-200 text-blue-600 shadow-sm ring-1 ring-blue-300/20 flex items-center gap-1.5">
-                  <span>{TONES[tone].emoji}</span>
-                  <span>{TONES[tone].label}</span>
-                </span>
+          {(phase === "eliciting" && tone) && (
+            <div className="p-4 border-t border-zinc-100 bg-white shrink-0 rounded-b-2xl">
+              {/* Interactive Tone Pill Selector */}
+              <div className="flex flex-col gap-1.5 pb-3">
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tone</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {Object.entries(TONES).map(([key, toneConfig]) => {
+                    const isSelected = key === tone;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setTone(key as ToneKey)}
+                        className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border transition-all cursor-pointer flex items-center gap-1 ${
+                          isSelected
+                            ? "bg-blue-50 border-blue-200 text-blue-600 shadow-sm ring-1 ring-blue-300/20"
+                            : "bg-zinc-50 border-zinc-200 text-zinc-600 hover:bg-zinc-100 hover:border-zinc-300"
+                        }`}
+                        title={toneConfig.instruction}
+                      >
+                        <span>{toneConfig.emoji}</span>
+                        <span>{toneConfig.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <form

@@ -540,6 +540,9 @@ function FormEditorContent() {
 
   const handleEmptyAreaClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
+    if (target.closest("[data-ai-panel]")) {
+      return;
+    }
     if (target.closest("button") || target.closest("input") || target.closest("a") || target.closest("[role='menu']") || target.closest("[data-radix-popper-content-wrapper]") || target.closest("textarea") || target.closest("select")) {
       return;
     }
