@@ -22,7 +22,7 @@ import {
   Type, Hash, Mail, Phone, Link2, Calendar, Clock, AlignLeft,
   CheckSquare, CircleDot, MapPin, Image, PenTool,
   Heading1, Heading2, Heading3, List, ListOrdered, Cloud, Check, History, CloudUpload, CloudOff, CloudCheck, ChevronLeft,
-  FileDown, LayoutGrid, Sparkles
+  FileDown, LayoutGrid, Sparkles, Share2, Globe, Lock
 } from "lucide-react";
 import * as Popover from "@radix-ui/react-popover";
 import * as Switch from "@radix-ui/react-switch";
@@ -32,7 +32,16 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useLogicStore } from "../../hooks/useLogicStore";
 import { turnBlockInto, TURN_INTO_TARGETS, isConvertibleBlock, resolveTargetKey } from "../../lib/turnInto";
-import { loadForm as loadFormAction, saveDraft, publishForm, type SaveStatus } from "../../lib/formActions";
+import {
+  loadForm as loadFormAction,
+  saveDraft,
+  publishForm,
+  type SaveStatus,
+  fetchSharingSettings,
+  updateFormAccess,
+  addFormMember,
+  removeFormMember
+} from "../../lib/formActions";
 import { TEMPLATES, getClonedTemplateSchema } from "../../lib/templates";
 import FormRenderer from "../../components/FormRenderer";
 
@@ -187,6 +196,10 @@ function FormEditorContent() {
   const [showTemplates, setShowTemplates] = useState(false);
   const [userProfile, setUserProfile] = useState<{ email?: string, avatar_url?: string } | null>(null);
   const [copiedUrl, setCopiedUrl] = useState(false);
+  const [accessOpen, setAccessOpen] = useState<boolean>(true);
+  const [formMembers, setFormMembers] = useState<{ user_id: string; email: string; role: "owner" | "editor" | "viewer" | "submitter" }[]>([]);
+  const [shareEmailInput, setShareEmailInput] = useState("");
+  const [isUpdatingAccess, setIsUpdatingAccess] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -240,6 +253,13 @@ function FormEditorContent() {
       // Programmatically update the address bar so that refreshes preserve the draft
       if (!formIdParam && result.formId) {
         window.history.replaceState(null, "", `/create-form?form=${result.formId}`);
+      }
+
+      if (result.userId && result.formId) {
+        fetchSharingSettings(result.formId).then((settings) => {
+          setAccessOpen(settings.access_open);
+          setFormMembers(settings.members);
+        });
       }
     });
 
@@ -682,26 +702,182 @@ function FormEditorContent() {
               <span>Export PDF</span>
             </button>
 
+            {formId && userId && (
+              <Popover.Root>
+                <Popover.Trigger asChild>
+                  <button className="px-3 py-1 text-sm font-medium text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer animate-in fade-in" title="Share and Access Settings">
+                    <Share2 size={14} />
+                    <span>Share</span>
+                  </button>
+                </Popover.Trigger>
+                <Popover.Content align="end" sideOffset={8} className="w-80 p-4 rounded-xl border border-zinc-200 bg-white shadow-xl z-[150] outline-none">
+                  <div className="flex flex-col gap-4">
+                    <div>
+                      <h3 className="text-sm font-semibold text-zinc-950">Share settings</h3>
+                      <p className="text-xs text-zinc-500 mt-0.5">Control who can access and submit responses to this form.</p>
+                    </div>
+
+                    <div className="h-px bg-zinc-100" />
+
+                    <div className="flex flex-col gap-2">
+                      <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Access Link</span>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          readOnly
+                          value={`${window.location.origin}/s/${formId}`}
+                          className="flex-1 bg-zinc-50 border border-zinc-200 rounded-lg px-2.5 py-1 text-xs text-zinc-600 focus:outline-none"
+                        />
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(`${window.location.origin}/s/${formId}`);
+                            setCopiedUrl(true);
+                            setTimeout(() => setCopiedUrl(false), 2000);
+                          }}
+                          className="px-2 py-1 text-xs font-medium text-zinc-600 bg-zinc-100 hover:bg-zinc-200 border border-zinc-200/60 rounded-lg transition-colors flex items-center justify-center shrink-0"
+                          title="Copy submission link"
+                        >
+                          {copiedUrl ? <Check size={14} className="text-green-600" /> : <Copy size={14} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Access Settings</span>
+                      <div className="flex flex-col gap-1.5">
+                        <button
+                          onClick={async () => {
+                            setIsUpdatingAccess(true);
+                            const ok = await updateFormAccess(formId, true);
+                            if (ok.ok) setAccessOpen(true);
+                            else alert(ok.error || "Failed to update access settings.");
+                            setIsUpdatingAccess(false);
+                          }}
+                          disabled={isUpdatingAccess}
+                          className={`flex items-start gap-3 p-2.5 rounded-lg border text-left transition-all ${
+                            accessOpen
+                              ? "border-blue-200 bg-blue-50/50 text-blue-900"
+                              : "border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700"
+                          }`}
+                        >
+                          <Globe className={`w-4 h-4 mt-0.5 shrink-0 ${accessOpen ? "text-blue-500" : "text-zinc-400"}`} />
+                          <div>
+                            <p className="text-xs font-semibold">Anyone can submit</p>
+                            <p className="text-[10px] text-zinc-500 mt-0.5">The form is public. No login required to submit answers.</p>
+                          </div>
+                        </button>
+
+                        <button
+                          onClick={async () => {
+                            setIsUpdatingAccess(true);
+                            const ok = await updateFormAccess(formId, false);
+                            if (ok.ok) setAccessOpen(false);
+                            else alert(ok.error || "Failed to update access settings.");
+                            setIsUpdatingAccess(false);
+                          }}
+                          disabled={isUpdatingAccess}
+                          className={`flex items-start gap-3 p-2.5 rounded-lg border text-left transition-all ${
+                            !accessOpen
+                              ? "border-blue-200 bg-blue-50/50 text-blue-900"
+                              : "border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700"
+                          }`}
+                        >
+                          <Lock className={`w-4 h-4 mt-0.5 shrink-0 ${!accessOpen ? "text-blue-500" : "text-zinc-400"}`} />
+                          <div>
+                            <p className="text-xs font-semibold">Restricted (Only selected people)</p>
+                            <p className="text-[10px] text-zinc-500 mt-0.5">Only specific users added below can view and submit this form.</p>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+
+                    {!accessOpen && (
+                      <div className="flex flex-col gap-2 mt-1 animate-in fade-in slide-in-from-top-1 duration-200">
+                        <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Manage Access</span>
+                        <form
+                          onSubmit={async (e) => {
+                            e.preventDefault();
+                            if (!shareEmailInput.trim()) return;
+                            setIsUpdatingAccess(true);
+                            const result = await addFormMember(formId, shareEmailInput, "submitter");
+                            if (result.ok && result.member) {
+                              setFormMembers((prev) => [...prev, result.member!]);
+                              setShareEmailInput("");
+                            } else {
+                              alert(result.error || "Failed to add user.");
+                            }
+                            setIsUpdatingAccess(false);
+                          }}
+                          className="flex gap-2"
+                        >
+                          <input
+                            type="email"
+                            placeholder="Enter email address"
+                            value={shareEmailInput}
+                            onChange={(e) => setShareEmailInput(e.target.value)}
+                            className="flex-1 border border-zinc-200 rounded-lg px-2.5 py-1.5 text-xs text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                            required
+                          />
+                          <button
+                            type="submit"
+                            disabled={isUpdatingAccess}
+                            className="px-3 py-1.5 text-xs font-medium text-white bg-zinc-900 hover:bg-zinc-800 rounded-lg transition-colors shrink-0 disabled:opacity-50"
+                          >
+                            Add
+                          </button>
+                        </form>
+
+                        {formMembers.length > 0 ? (
+                          <div className="max-h-36 overflow-y-auto border border-zinc-100 rounded-lg divide-y divide-zinc-50 mt-1">
+                            {formMembers.map((member) => (
+                              <div key={member.user_id} className="flex items-center justify-between p-2 text-xs">
+                                <span className="text-zinc-600 truncate max-w-[180px] font-medium" title={member.email}>
+                                  {member.email}
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-[10px] text-zinc-400 font-semibold uppercase bg-zinc-50 border border-zinc-200/50 px-1.5 py-0.5 rounded">
+                                    {member.role}
+                                  </span>
+                                  <button
+                                    onClick={async () => {
+                                      setIsUpdatingAccess(true);
+                                      const ok = await removeFormMember(formId, member.user_id);
+                                      if (ok.ok) {
+                                        setFormMembers((prev) => prev.filter((m) => m.user_id !== member.user_id));
+                                      } else {
+                                        alert(ok.error || "Failed to remove member.");
+                                      }
+                                      setIsUpdatingAccess(false);
+                                    }}
+                                    disabled={isUpdatingAccess}
+                                    className="p-1 text-zinc-400 hover:text-red-500 hover:bg-zinc-50 rounded transition-colors"
+                                    title="Revoke access"
+                                  >
+                                    <Trash size={12} />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-zinc-400 text-center py-2 bg-zinc-50 rounded-lg border border-dashed border-zinc-200">
+                            No users added yet. Anyone with the link will be blocked until you add them.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </Popover.Content>
+              </Popover.Root>
+            )}
+
             <div className="flex items-center">
               <button
                 onClick={handlePublish}
-                className={`px-4 py-1 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 shadow-sm transition-colors ${formId && formVersion !== null ? 'rounded-lg' : 'rounded-lg'}`}
+                className="px-4 py-1 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 shadow-sm transition-colors rounded-lg"
               >
                 Publish
               </button>
-              {formId && formVersion !== null && (
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(window.location.origin + '/s/' + formId);
-                    setCopiedUrl(true);
-                    setTimeout(() => setCopiedUrl(false), 2000);
-                  }}
-                  title="Copy Link"
-                  className="ml-2 px-2 py-2 text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 rounded-lg transition-colors flex justify-between items-center"
-                >
-                  {copiedUrl ? <Check size={16} /> : <LinkIcon size={16} />}
-                </button>
-              )}
             </div>
 
             <div className="w-px h-4 bg-zinc-300 mx-2"></div>

@@ -260,3 +260,126 @@ export async function publishForm(
     return { ok: false, error: err?.message || "Unknown error" };
   }
 }
+
+export interface SharingSettings {
+  access_open: boolean;
+  members: {
+    user_id: string;
+    email: string;
+    role: "owner" | "editor" | "viewer" | "submitter";
+  }[];
+}
+
+export async function fetchSharingSettings(formId: string): Promise<SharingSettings> {
+  // 1. Fetch access_open status from forms
+  const { data: formData } = await supabase
+    .from("forms")
+    .select("access_open")
+    .eq("id", formId)
+    .single();
+
+  const access_open = formData?.access_open ?? false;
+
+  // 2. Fetch members of the form from form_members
+  const { data: membersData } = await supabase
+    .from("form_members")
+    .select("user_id, role")
+    .eq("form_id", formId);
+
+  if (!membersData || membersData.length === 0) {
+    return { access_open, members: [] };
+  }
+
+  const userIds = membersData.map((m) => m.user_id);
+  const { data: profiles } = await supabase
+    .from("user_profiles")
+    .select("id, email")
+    .in("id", userIds);
+
+  const emailMap = new Map<string, string>();
+  profiles?.forEach((p) => {
+    if (p.email) emailMap.set(p.id, p.email);
+  });
+
+  const members = membersData
+    .map((m) => ({
+      user_id: m.user_id,
+      email: emailMap.get(m.user_id) || "",
+      role: m.role as "owner" | "editor" | "viewer" | "submitter",
+    }))
+    .filter((m) => m.email !== ""); // Filter out any members without matching profiles
+
+  return { access_open, members };
+}
+
+export async function updateFormAccess(formId: string, accessOpen: boolean): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase
+    .from("forms")
+    .update({ access_open: accessOpen, updated_at: new Date().toISOString() })
+    .eq("id", formId);
+
+  if (error) {
+    console.error("Failed to update form access:", error);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
+
+export async function addFormMember(
+  formId: string,
+  email: string,
+  role: "owner" | "editor" | "viewer" | "submitter" = "submitter"
+): Promise<{ ok: boolean; member?: { user_id: string; email: string; role: "owner" | "editor" | "viewer" | "submitter" }; error?: string }> {
+  // 1. Find user in user_profiles
+  const { data: profile, error: profileError } = await supabase
+    .from("user_profiles")
+    .select("id")
+    .eq("email", email.trim().toLowerCase())
+    .maybeSingle();
+
+  if (profileError) {
+    return { ok: false, error: `Error searching user profile: ${profileError.message}` };
+  }
+  if (!profile) {
+    return { ok: false, error: `User with email "${email}" has not registered with FieldTally yet.` };
+  }
+
+  // 2. Add member row
+  const { error: insertError } = await supabase
+    .from("form_members")
+    .insert({
+      form_id: formId,
+      user_id: profile.id,
+      role: role,
+    });
+
+  if (insertError) {
+    if (insertError.code === "23505") { // Unique key constraint / Duplicate key
+      return { ok: false, error: `User is already added to this form.` };
+    }
+    return { ok: false, error: `Failed to add member: ${insertError.message}` };
+  }
+
+  return {
+    ok: true,
+    member: {
+      user_id: profile.id,
+      email: email.trim().toLowerCase(),
+      role: role,
+    }
+  };
+}
+
+export async function removeFormMember(formId: string, userId: string): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase
+    .from("form_members")
+    .delete()
+    .eq("form_id", formId)
+    .eq("user_id", userId);
+
+  if (error) {
+    return { ok: false, error: `Failed to remove member: ${error.message}` };
+  }
+  return { ok: true };
+}
+
