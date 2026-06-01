@@ -22,6 +22,8 @@
     "packages/*"
   ],
   "dependencies": {
+    "@google/genai": "^2.7.0",
+    "genai": "^0.0.18",
     "lucide-react": "^1.8.0"
   },
   "overrides": {

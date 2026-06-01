@@ -22,7 +22,7 @@ import {
   Type, Hash, Mail, Phone, Link2, Calendar, Clock, AlignLeft,
   CheckSquare, CircleDot, MapPin, Image, PenTool,
   Heading1, Heading2, Heading3, List, ListOrdered, Cloud, Check, History, CloudUpload, CloudOff, CloudCheck, ChevronLeft,
-  FileDown, LayoutGrid
+  FileDown, LayoutGrid, Sparkles
 } from "lucide-react";
 import * as Popover from "@radix-ui/react-popover";
 import * as Switch from "@radix-ui/react-switch";
@@ -38,6 +38,7 @@ import FormRenderer from "../../components/FormRenderer";
 
 import { defaultExtensions } from "./extension";
 import { slashCommand, suggestionItems } from "./slashCommand";
+import ChatPanel from "./ai-chat/ChatPanel";
 
 // Icon map for the "Turn Into" submenu
 const TURN_INTO_ICONS: Record<string, React.ReactNode> = {
@@ -151,6 +152,7 @@ function FormEditorContent() {
   const [editorKey, setEditorKey] = useState(0);
   // Holds the JSON output shown in the modal; null means modal is closed
   const [jsonOutput, setJsonOutput] = useState<string | null>(null);
+  const [isAiChatOpen, setIsAiChatOpen] = useState(false);
   const [extensions, setExtensions] = useState(() => [
     ...defaultExtensions,
     slashCommand,
@@ -199,11 +201,11 @@ function FormEditorContent() {
 
   const handleLoadTemplate = (template: any) => {
     if (!editorRef.current) return;
-    
+
     // Check if the current editor has any meaningful content or title
     const currentJson = editorRef.current.getJSON();
     const hasContent = currentJson.content && (
-      currentJson.content.length > 1 || 
+      currentJson.content.length > 1 ||
       (currentJson.content[0] && currentJson.content[0].content && currentJson.content[0].content.length > 0)
     );
 
@@ -211,9 +213,9 @@ function FormEditorContent() {
       const confirmLoad = confirm("Loading a template will replace all current questions and content in the editor. Do you want to continue?");
       if (!confirmLoad) return;
     }
-    
+
     const freshSchema = getClonedTemplateSchema(template.schema);
-    
+
     // Set content in Tiptap
     editorRef.current.commands.setContent(freshSchema);
     // Update title
@@ -647,6 +649,19 @@ function FormEditorContent() {
             <div className="h-4 w-px bg-zinc-300 mx-1"></div>
 
             <button
+              onClick={() => setIsAiChatOpen(!isAiChatOpen)}
+              className={`px-3 py-1 text-sm font-medium transition-all rounded-lg flex items-center gap-1.5 cursor-pointer border ${
+                isAiChatOpen
+                  ? "bg-blue-50 border-blue-200 text-blue-600"
+                  : "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-sm border-transparent hover:shadow"
+              }`}
+              title="Open AI Form Assistant"
+            >
+              <Sparkles size={14} className={isAiChatOpen ? "" : "animate-pulse"} />
+              <span>AI Assistant</span>
+            </button>
+
+            <button
               onClick={handleSubmit}
               className="px-3 py-1 text-sm font-medium text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors cursor-pointer"
             >
@@ -724,7 +739,7 @@ function FormEditorContent() {
           </div>
         </div>
 
-        <div className="px-12 pt-36 pb-24 max-w-4xl mx-auto">
+        <div className={`pt-36 pb-24 max-w-4xl mx-auto transition-all duration-300 ${isAiChatOpen ? 'mr-[440px] ml-28 max-w-2xl' : 'px-12'}`}>
           {/* Custom drag handle injected into the DOM for GlobalDragHandle to use */}
           <div
             className={`custom-drag-handle gap-0.5 fixed z-50 bg-white ml-4 text-zinc-400 ${isKeyboardActive && !menuOpen ? 'hidden' : 'flex'}`}
@@ -1037,14 +1052,13 @@ function FormEditorContent() {
 
           {/* Light-themed Template Selection Boxes (positioned below the first line, always mounted for smooth transition) */}
           <div
-            className={`transition-all duration-500 ease-in-out ${
-              isLoaded && formTitle.trim() === "" && isEditorEmpty
+            className={`transition-all duration-500 ease-in-out ${isLoaded && formTitle.trim() === "" && isEditorEmpty
                 ? "opacity-100 translate-y-0 scale-100 max-h-[500px] mt-10"
                 : "opacity-0 -translate-y-4 scale-95 max-h-0 overflow-hidden mt-0 pointer-events-none"
-            }`}
+              }`}
           >
             <div className="p-6 bg-zinc-50/50 border border-zinc-200/80 rounded-2xl">
-              <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">Start with a template</h3>              
+              <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">Start with a template</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
                 {TEMPLATES.map((template) => {
                   const complexity = template.id === "contact-form" ? "1/3" : template.id === "product-survey" ? "2/3" : "3/3";
@@ -1052,7 +1066,7 @@ function FormEditorContent() {
                     <button
                       key={template.id}
                       onClick={() => handleLoadTemplate(template)}
-                      className="text-left bg-white border border-zinc-200/60 hover:border-blue-400/80 rounded-md hover:shadow-sm hover:scale-[1.01] active:scale-[0.99] transition-all flex flex-col justify-between group cursor-pointer p-3"
+                      className="text-left bg-white border border-zinc-200/60 hover:border-blue-400/80 rounded-md hover:shadow-sm active:scale-[0.99] transition-all flex flex-col justify-between group cursor-pointer p-3"
                     >
                       <div>
                         <div className="flex items-center gap-1.5 mb-2">
@@ -1127,6 +1141,20 @@ function FormEditorContent() {
             </div>
           </div>
         )}
+
+        <ChatPanel
+          isOpen={isAiChatOpen}
+          onClose={() => setIsAiChatOpen(false)}
+          currentFormTitle={formTitle}
+          getCurrentSchema={() => editorRef.current?.getJSON()}
+          onApplySchema={(schema, title) => {
+            if (editorRef.current) {
+              editorRef.current.commands.setContent(schema);
+              setFormTitle(title);
+              saveForm(schema, title);
+            }
+          }}
+        />
       </div>
 
 
