@@ -49,7 +49,7 @@ export async function loadForm(initialContent: any, formIdParam?: string | null)
   const { data: { user } } = await supabase.auth.getUser();
   const userId = user?.id || null;
 
-  let currentId = formIdParam || localStorage.getItem("current_draft_form_id");
+  let currentId = formIdParam;
   if (!currentId) {
     currentId = crypto.randomUUID();
     localStorage.setItem("current_draft_form_id", currentId);

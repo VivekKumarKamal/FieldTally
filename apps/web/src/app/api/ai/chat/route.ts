@@ -12,15 +12,17 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (!process.env.GOOGLE_API_KEY) {
+    const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY
+
+    if (!apiKey) {
       return NextResponse.json(
-        { error: "GOOGLE_API_KEY not configured" },
+        { error: "API key not configured (neither GOOGLE_API_KEY nor GEMINI_API_KEY found)" },
         { status: 500 }
       )
     }
 
     // Initialize the new GoogleGenAI SDK client
-    const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY })
+    const ai = new GoogleGenAI({ apiKey })
 
     // Format chat history to comply with Gemini API constraints:
     // 1. Ensure message content is never empty (prevents 400 Bad Request).

@@ -236,6 +236,11 @@ function FormEditorContent() {
       setLatestPublishedTitle(result.latestPublishedTitle || null);
       if (result.shouldRemount) setEditorKey(k => k + 1);
       setIsLoaded(true);
+
+      // Programmatically update the address bar so that refreshes preserve the draft
+      if (!formIdParam && result.formId) {
+        window.history.replaceState(null, "", `/create-form?form=${result.formId}`);
+      }
     });
 
     supabase.auth.getUser().then(({ data }) => {
