@@ -60,7 +60,7 @@ export const MultipleChoiceTitle = Node.create({
           this.editor.chain()
             .deleteRange({ from: start, to: end })
             .insertContentAt(start, { type: "paragraph" })
-            .setTextSelection(start + 1)
+            .setTextSelection(start)
             .run();
           return true;
         }

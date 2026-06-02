@@ -808,11 +808,6 @@ export default function Home() {
 
             {/* Left Column: Title and details */}
             <div className="w-full lg:w-1/2 space-y-6 text-left">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 border border-indigo-100 rounded-full text-[10px] font-semibold text-indigo-600 uppercase tracking-widest">
-                <BarChart3 className="w-3.5 h-3.5" />
-                Real-time Analytics
-              </div>
-              
               <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-950 leading-tight">
                 Turn responses into <br />
                 <span className="bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600 bg-clip-text text-transparent">

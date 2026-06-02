@@ -156,6 +156,7 @@ export const suggestionItems = createSuggestionItems([
         .focus()
         .deleteRange(range)
         .insertContent(checkboxesContent)
+        .setTextSelection(range.from + 1)
         .run();
     },
   },
@@ -170,6 +171,7 @@ export const suggestionItems = createSuggestionItems([
         .focus()
         .deleteRange(range)
         .insertContent(multipleChoiceContent)
+        .setTextSelection(range.from + 1)
         .run();
     },
   },

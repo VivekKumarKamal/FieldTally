@@ -187,54 +187,31 @@ function exportJSON(
   downloadFile(`${formTitle}_v${version}_submissions.json`, json, "application/json");
 }
 
-function exportExcel(
+async function exportExcel(
   columns: QuestionColumn[],
   submissions: Submission[],
   formTitle: string,
   version: number
 ) {
-  // Generate an Excel-compatible XML spreadsheet
-  const headers = ["#", "Submitted At", ...columns.map((c) => c.label)];
-  const rows = submissions.map((s, i) => [
-    String(i + 1),
-    formatDateTime(s.filled_at),
-    ...columns.map((c) => formatCellValue(s.data[c.id])),
-  ]);
+  try {
+    const XLSX = await import("xlsx");
+    const headers = ["#", "Submitted At", ...columns.map((c) => c.label)];
+    const rows = submissions.map((s, i) => [
+      i + 1,
+      formatDateTime(s.filled_at),
+      ...columns.map((c) => formatCellValue(s.data[c.id])),
+    ]);
 
-  const escapeXml = (s: string) =>
-    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const worksheetData = [headers, ...rows];
+    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Submissions");
 
-  let xml = `<?xml version="1.0"?>\n<?mso-application progid="Excel.Sheet"?>\n`;
-  xml += `<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"\n`;
-  xml += ` xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n`;
-  xml += `<Styles>\n`;
-  xml += `<Style ss:ID="header"><Font ss:Bold="1" ss:Size="11"/><Interior ss:Color="#F4F4F5" ss:Pattern="Solid"/></Style>\n`;
-  xml += `<Style ss:ID="cell"><Font ss:Size="10"/></Style>\n`;
-  xml += `</Styles>\n`;
-  xml += `<Worksheet ss:Name="Submissions">\n<Table>\n`;
-
-  // Header row
-  xml += `<Row ss:StyleID="header">\n`;
-  for (const h of headers) {
-    xml += `<Cell><Data ss:Type="String">${escapeXml(h)}</Data></Cell>\n`;
+    XLSX.writeFile(workbook, `${formTitle}_v${version}_submissions.xlsx`);
+  } catch (err) {
+    console.error("Failed to export to Excel:", err);
+    alert("Failed to export to Excel. Please try again.");
   }
-  xml += `</Row>\n`;
-
-  // Data rows
-  for (const row of rows) {
-    xml += `<Row ss:StyleID="cell">\n`;
-    for (const cell of row) {
-      xml += `<Cell><Data ss:Type="String">${escapeXml(cell)}</Data></Cell>\n`;
-    }
-    xml += `</Row>\n`;
-  }
-
-  xml += `</Table>\n</Worksheet>\n</Workbook>`;
-  downloadFile(
-    `${formTitle}_v${version}_submissions.xls`,
-    xml,
-    "application/vnd.ms-excel"
-  );
 }
 
 // ─── Analytics Charting Components ─────────────────────────
@@ -883,8 +860,8 @@ function SubmissionsContent() {
                     >
                       <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
                       <div className="text-left">
-                        <div className="font-medium">Excel (.xls)</div>
-                        <div className="text-[11px] text-zinc-400">Spreadsheet format</div>
+                        <div className="font-medium">Excel (.xlsx)</div>
+                        <div className="text-[11px] text-zinc-400">Microsoft Excel</div>
                       </div>
                     </button>
                     <button
