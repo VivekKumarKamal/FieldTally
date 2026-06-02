@@ -35,7 +35,7 @@ function ExportPdfContent() {
 
   useEffect(() => {
     const raw = localStorage.getItem("export_form_schema");
-    const title = localStorage.getItem("export_form_title") || "Untitled Form";
+    const title = localStorage.getItem("export_form_title") || "";
     if (raw) {
       try {
         setFormSchema(JSON.parse(raw));

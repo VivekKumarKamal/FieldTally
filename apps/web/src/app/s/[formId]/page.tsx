@@ -6,6 +6,21 @@ import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
 import FormRenderer from "../../../components/FormRenderer";
 
+function PoweredByBadge() {
+  return (
+    <Link 
+      href="/"
+      className="fixed bottom-6 right-6 flex items-center gap-1.5 px-3 py-2 bg-white/80 border border-zinc-200/60 rounded-lg text-xs font-medium text-zinc-500 hover:text-zinc-800 hover:bg-zinc-50 transition-all z-50 group"
+    >
+      <span>Powered by</span>
+      <span className="font-semibold text-zinc-800">FieldTally</span>
+      <div className="w-4 h-4 bg-gradient-to-r from-zinc-600 to-zinc-800 rounded-md flex items-center justify-center opacity-90 group-hover:opacity-100 transition-opacity">
+         <span className="text-white text-[8px] font-bold tracking-tighter">FT</span>
+      </div>
+    </Link>
+  );
+}
+
 function SubmissionPageContent() {
   const router = useRouter();
   const params = useParams()!;
@@ -54,7 +69,7 @@ function SubmissionPageContent() {
           .single();
           
         if (formError || !form) {
-          setError("Parent form not found or you do not have permission to view it.");
+          setError(`Form not found or you do not have permission to view it.`);
           setLoading(false);
           return;
         }
@@ -185,7 +200,7 @@ function SubmissionPageContent() {
 
   if (error === "restricted") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-50">
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 relative pb-16">
         <div className="bg-white p-8 rounded-2xl shadow-sm border border-zinc-200 text-center max-w-md">
           <div className="w-12 h-12 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -198,29 +213,41 @@ function SubmissionPageContent() {
             Sign In to Access
           </Link>
         </div>
+        <PoweredByBadge />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-50">
-        <div className="bg-white p-8 rounded-2xl shadow-sm border border-zinc-200 text-center max-w-md">
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 relative pb-16">
+        <div className="bg-white p-8 rounded-2xl shadow-sm border border-zinc-200 text-center max-w-sm w-full mx-4">
           <div className="w-12 h-12 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
           <h2 className="text-xl font-semibold text-zinc-900 mb-2">Oops!</h2>
-          <p className="text-zinc-600">{error}</p>
+          <p className="text-zinc-600 mb-6">{error}</p>
+        
+          <div className="pt-4 border-t border-zinc-100 flex items-center justify-center gap-1.5 text-xs text-zinc-400">
+            <span>Powered by</span>
+            <Link href="/" className="font-semibold text-zinc-700 hover:text-zinc-900 flex items-center gap-1.5 group">
+              <span>FieldTally</span>
+              <div className="w-4 h-4 bg-gradient-to-r from-zinc-600 to-zinc-800 rounded-md flex items-center justify-center opacity-90 group-hover:opacity-100 transition-opacity">
+                <span className="text-white text-[8px] font-bold tracking-tighter">FT</span>
+              </div>
+            </Link>
+          </div>
         </div>
+        <PoweredByBadge />
       </div>
     );
   }
 
   if (submitted) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-50">
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 relative pb-16">
         <div className="bg-white p-10 rounded-2xl shadow-sm border border-zinc-200 text-center max-w-md animate-in fade-in zoom-in duration-500">
           <div className="w-16 h-16 bg-green-50 text-green-500 rounded-full flex items-center justify-center mx-auto mb-6">
             <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -236,6 +263,7 @@ function SubmissionPageContent() {
             Submit another response
           </button>
         </div>
+        <PoweredByBadge />
       </div>
     );
   }
@@ -256,16 +284,7 @@ function SubmissionPageContent() {
         />
       </div>
 
-      <Link 
-        href="/"
-        className="fixed bottom-6 right-6 flex items-center gap-1.5 px-3 py-2 bg-white/80 border border-zinc-200/60 rounded-lg text-xs font-medium text-zinc-500 hover:text-zinc-800 hover:bg-zinc-50 transition-all z-50 group"
-      >
-        <span>Powered by</span>
-        <span className="font-semibold text-zinc-800">FieldTally</span>
-        <div className="w-4 h-4 bg-gradient-to-r from-zinc-600 to-zinc-800 rounded-md flex items-center justify-center opacity-90 group-hover:opacity-100 transition-opacity">
-           <span className="text-white text-[8px] font-bold tracking-tighter">FT</span>
-        </div>
-      </Link>
+      <PoweredByBadge />
     </div>
   );
 }
