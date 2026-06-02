@@ -39,6 +39,7 @@ export default function Dashboard() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [forms, setForms] = useState<FormRow[]>([]);
+  const [sharedForms, setSharedForms] = useState<any[]>([]);
   const [orphanDraft, setOrphanDraft] = useState<{ id: string; title: string } | null>(null);
   const [claimingDraft, setClaimingDraft] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -62,6 +63,33 @@ export default function Dashboard() {
         .order("updated_at", { ascending: false });
 
       setForms((userForms as FormRow[]) || []);
+
+      // Fetch shared forms
+      const { data: sharedMembersData } = await supabase
+        .from("form_members")
+        .select("form_id, role")
+        .eq("user_id", currentUser.id);
+
+      let sharedList: any[] = [];
+      if (sharedMembersData && sharedMembersData.length > 0) {
+        const formIds = sharedMembersData.map(m => m.form_id);
+        const { data: fetchedSharedForms } = await supabase
+          .from("forms")
+          .select("id, status, updated_at, draft_schema, created_by")
+          .in("id", formIds)
+          .neq("created_by", currentUser.id)
+          .order("updated_at", { ascending: false });
+
+        if (fetchedSharedForms) {
+          const roleMap = new Map<string, string>();
+          sharedMembersData.forEach(m => roleMap.set(m.form_id, m.role || "submitter"));
+          sharedList = fetchedSharedForms.map((f: any) => ({
+            ...f,
+            role: roleMap.get(f.id) || "submitter"
+          }));
+        }
+      }
+      setSharedForms(sharedList);
 
       // Check for orphan local draft (created before login)
       const localDraftId = localStorage.getItem("current_draft_form_id");
@@ -398,6 +426,71 @@ export default function Dashboard() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Shared with You Section */}
+        {sharedForms.length > 0 && (
+          <div className="mt-10">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold text-zinc-900">Shared with You</h2>
+              <span className="text-sm text-zinc-400">{sharedForms.length} {sharedForms.length === 1 ? "form" : "forms"}</span>
+            </div>
+
+            <div className="grid gap-3">
+              {sharedForms.map(form => {
+                const title = getFormTitle(form);
+                const isPublished = form.status === "published";
+                
+                return (
+                  <div
+                    key={form.id}
+                    className="group bg-white border border-zinc-200/80 rounded-xl p-4 hover:border-zinc-300 hover:shadow-sm transition-all"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${isPublished ? "bg-blue-50" : "bg-zinc-100"}`}>
+                          {isPublished ? (
+                            <Globe className="w-4 h-4 text-blue-600" />
+                          ) : (
+                            <FileText className="w-4 h-4 text-zinc-400" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="text-sm font-semibold text-zinc-900 truncate">{title}</h3>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded-full bg-zinc-100 text-zinc-500 tracking-wider">
+                              {form.role}
+                            </span>
+                            <span className="text-[11px] text-zinc-400 flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {formatDate(form.updated_at)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {isPublished ? (
+                          <Link
+                            href={`/s/${form.id}`}
+                            target="_blank"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 rounded-lg transition-colors"
+                          >
+                            <Globe className="w-3.5 h-3.5" />
+                            View Form
+                          </Link>
+                        ) : (
+                          <span className="text-xs text-zinc-400 font-medium px-3 py-1.5 select-none">
+                            Not published yet
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>

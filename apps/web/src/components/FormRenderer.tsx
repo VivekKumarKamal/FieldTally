@@ -93,11 +93,12 @@ type FormRendererProps = {
   /** Called with the final answers map when the user submits. */
   onSubmit?: (answers: Record<string, any>) => void;
   isPrinting?: boolean;
+  readOnly?: boolean;
 };
 
 // ─── FormRenderer ────────────────────────────────────────
 
-export default function FormRenderer({ schema, title, progressBarOffset, onSubmit, isPrinting = false }: FormRendererProps) {
+export default function FormRenderer({ schema, title, progressBarOffset, onSubmit, isPrinting = false, readOnly = false }: FormRendererProps) {
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const [submitted, setSubmitted] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -385,12 +386,15 @@ export default function FormRenderer({ schema, title, progressBarOffset, onSubmi
           formId={formId}
           uploadState={uploadState}
           handleImageUpload={handleImageUpload}
+          readOnly={readOnly}
         />
       ))}
 
-      <div className="mt-8 print:hidden">
-        <button onClick={handleSubmit} className="submit-btn flex items-center gap-2"><span>Submit</span><Send size={16} /></button>
-      </div>
+      {!readOnly && (
+        <div className="mt-8 print:hidden">
+          <button onClick={handleSubmit} className="submit-btn flex items-center gap-2"><span>Submit</span><Send size={16} /></button>
+        </div>
+      )}
 
       <p className="text-center text-xs text-zinc-400 mt-10 print:hidden">
         Powered by <span className="font-semibold text-zinc-500">FieldTally</span>
@@ -401,7 +405,7 @@ export default function FormRenderer({ schema, title, progressBarOffset, onSubmi
 
 // ─── Universal Node Renderer ─────────────────────────────
 
-export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors, visibility, isPrinting = false, gpsState, captureLocationForField, formId, uploadState, handleImageUpload }: {
+export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors, visibility, isPrinting = false, gpsState, captureLocationForField, formId, uploadState, handleImageUpload, readOnly = false }: {
   node: any; answers: Record<string, any>; updateAnswer: (id: string, v: any) => void;
   toggleCheckbox: (id: string, opt: string) => void; errors: Record<string, string>;
   visibility: Record<string, boolean>;
@@ -411,6 +415,7 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
   formId?: string;
   uploadState?: Record<string, { loading: boolean; error: string | null }>;
   handleImageUpload?: (id: string, file: File, formId: string) => void;
+  readOnly?: boolean;
 }) {
   const id = node.attrs?.id;
 
@@ -506,7 +511,8 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
             placeholder={isPrinting ? "" : (placeholder || "")}
             value={currentVal}
             maxLength={maxLen}
-            onChange={e => updateAnswer(id, e.target.value)}
+            onChange={e => !readOnly && updateAnswer(id, e.target.value)}
+            disabled={readOnly}
             style={{ color: "#3f3f46", paddingRight: (!isPrinting && maxLen) ? "3rem" : undefined }}
           />
           {!isPrinting && maxLen && (
@@ -547,8 +553,9 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
             value={storedCC}
             onChange={e => {
               const cc = e.target.value.replace(/\D/g, "");
-              updateAnswer(id, `+${cc} ${storedNum}`);
+              !readOnly && updateAnswer(id, `+${cc} ${storedNum}`);
             }}
+            disabled={readOnly}
             className="phone-cc-input"
             style={{ width: `${Math.max(1, storedCC.length)}ch` }}
           />
@@ -562,8 +569,9 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
             value={storedNum}
             onChange={e => {
               const num = e.target.value.replace(/\D/g, "").slice(0, 10);
-              updateAnswer(id, `+${storedCC} ${num}`);
+              !readOnly && updateAnswer(id, `+${storedCC} ${num}`);
             }}
+            disabled={readOnly}
           />
         </div>
         {hasError && <p className="text-red-500 text-xs mt-1 font-medium">{errors[id]}</p>}
@@ -592,7 +600,8 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
             type="url"
             placeholder={isPrinting ? "" : (placeholder || "")}
             value={answers[id] || ""}
-            onChange={e => updateAnswer(id, e.target.value)}
+            onChange={e => !readOnly && updateAnswer(id, e.target.value)}
+            disabled={readOnly}
             style={{ color: "#3f3f46" }}
           />
         </div>
@@ -622,7 +631,8 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
             placeholder={isPrinting ? "" : (placeholder || "")}
             rows={rows}
             value={answers[id] || ""}
-            onChange={e => updateAnswer(id, e.target.value)}
+            onChange={e => !readOnly && updateAnswer(id, e.target.value)}
+            disabled={readOnly}
             style={{ color: "#3f3f46" }}
           />
         </div>
@@ -648,11 +658,11 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
           const displayTxt = text.trim() ? text : `Option ${i + 1}`;
           const isChecked = selected.includes(displayTxt);
           return (
-            <div key={i} data-type="checkbox-option" className="cursor-pointer" onClick={() => toggleCheckbox(id, displayTxt)}>
+            <div key={i} data-type="checkbox-option" className={readOnly ? "cursor-not-allowed opacity-80" : "cursor-pointer"} onClick={() => !readOnly && toggleCheckbox(id, displayTxt)}>
               <div className="option-marker" style={{ background: isChecked ? "#232323" : "transparent", borderColor: isChecked ? "#232323" : "#ccc", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {isChecked && <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
               </div>
-              <div className="option-content" style={{ cursor: "pointer", color: text.trim() ? "inherit" : "#adb5bd" }}>{displayTxt}</div>
+              <div className="option-content" style={{ cursor: readOnly ? "not-allowed" : "pointer", color: text.trim() ? "inherit" : "#adb5bd" }}>{displayTxt}</div>
             </div>
           );
         })}
@@ -678,11 +688,11 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
           const displayTxt = text.trim() ? text : `Option ${i + 1}`;
           const isSelected = selected === displayTxt;
           return (
-            <div key={i} data-type="multiple-choice-option" className="cursor-pointer" onClick={() => updateAnswer(id, displayTxt)}>
+            <div key={i} data-type="multiple-choice-option" className={readOnly ? "cursor-not-allowed opacity-80" : "cursor-pointer"} onClick={() => !readOnly && updateAnswer(id, displayTxt)}>
               <div className="option-marker" style={{ background: isSelected ? "#232323" : "transparent", borderColor: isSelected ? "#232323" : "#ccc", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {isSelected && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "white" }} />}
               </div>
-              <div className="option-content" style={{ cursor: "pointer", color: text.trim() ? "inherit" : "#adb5bd" }}>{displayTxt}</div>
+              <div className="option-content" style={{ cursor: readOnly ? "not-allowed" : "pointer", color: text.trim() ? "inherit" : "#adb5bd" }}>{displayTxt}</div>
             </div>
           );
         })}
@@ -774,7 +784,7 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
                 </div>
 
                 {/* Action button */}
-                {!isPrinting && (
+                {!isPrinting && !readOnly && (
                   <div>
                     {required ? (
                       (!isCaptured && !fieldGpsState.loading) && (
@@ -831,7 +841,7 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
           {value ? (
             <div className="relative w-full max-w-sm rounded-lg overflow-hidden border border-zinc-200 bg-zinc-50 p-2 group">
               <img src={value} alt="Upload preview" className="w-full max-h-48 object-contain rounded" />
-              {!isPrinting && (
+              {!isPrinting && !readOnly && (
                 <button
                   type="button"
                   onClick={() => updateAnswer(id, null)}
@@ -847,7 +857,7 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
               className={`image-print-box flex flex-col items-center justify-center border border-dashed rounded-xl bg-zinc-50 hover:bg-zinc-100/70 transition-all cursor-pointer relative ${hasError ? "border-red-300 bg-red-25/25" : "border-zinc-200"}`}
               style={{ minHeight: isPrinting ? "300px" : "auto", padding: isPrinting ? "40px" : "24px" }}
             >
-              {!isPrinting && (
+              {!isPrinting && !readOnly && (
                 <input
                   type="file"
                   accept="image/*"
@@ -898,7 +908,7 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
         </div>
         
         <div className="mt-2">
-          {isPrinting ? (
+          {isPrinting || readOnly ? (
             value ? (
               <div 
                 className="border border-zinc-200 rounded-lg p-2 flex items-center justify-center relative overflow-hidden select-none"
@@ -913,7 +923,7 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
               >
                 <div className="absolute top-2 right-2 flex items-center gap-1">
                   <PenTool size={10} className="text-zinc-400" />
-                  <span className="text-[8px] font-bold text-zinc-400 uppercase tracking-wider">Sign here</span>
+                  <span className="text-[8px] font-bold text-zinc-400 uppercase tracking-wider">{readOnly ? "No signature" : "Sign here"}</span>
                 </div>
               </div>
             )

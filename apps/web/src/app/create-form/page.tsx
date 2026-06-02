@@ -40,7 +40,8 @@ import {
   fetchSharingSettings,
   updateFormAccess,
   addFormMember,
-  removeFormMember
+  removeFormMember,
+  updateFormMemberRole
 } from "../../lib/formActions";
 import { TEMPLATES, getClonedTemplateSchema } from "../../lib/templates";
 import FormRenderer from "../../components/FormRenderer";
@@ -197,9 +198,31 @@ function FormEditorContent() {
   const [userProfile, setUserProfile] = useState<{ email?: string, avatar_url?: string } | null>(null);
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [accessOpen, setAccessOpen] = useState<boolean>(true);
-  const [formMembers, setFormMembers] = useState<{ user_id: string; email: string; role: "owner" | "editor" | "viewer" | "submitter" }[]>([]);
+  const [formMembers, setFormMembers] = useState<{ user_id: string; email: string; name?: string; role: "owner" | "editor" | "viewer" | "submitter" }[]>([]);
   const [shareEmailInput, setShareEmailInput] = useState("");
+  const [addMemberRoles, setAddMemberRoles] = useState({
+    viewer: true,
+    submitter: false,
+  });
   const [isUpdatingAccess, setIsUpdatingAccess] = useState(false);
+
+  const handleAddRoleChange = (role: 'viewer' | 'submitter', checked: boolean) => {
+    setAddMemberRoles(prev => {
+      if (role === 'submitter') {
+        if (checked) {
+          return { viewer: true, submitter: true };
+        } else {
+          return { ...prev, submitter: false };
+        }
+      } else { // viewer
+        if (checked) {
+          return { ...prev, viewer: true };
+        } else {
+          return { viewer: false, submitter: false };
+        }
+      }
+    });
+  };
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -802,65 +825,121 @@ function FormEditorContent() {
                             e.preventDefault();
                             if (!shareEmailInput.trim()) return;
                             setIsUpdatingAccess(true);
-                            const result = await addFormMember(formId, shareEmailInput, "submitter");
+                            
+                            let selectedRole: "viewer" | "submitter" = "viewer";
+                            if (addMemberRoles.submitter) selectedRole = "submitter";
+
+                            const result = await addFormMember(formId, shareEmailInput, selectedRole);
                             if (result.ok && result.member) {
                               setFormMembers((prev) => [...prev, result.member!]);
                               setShareEmailInput("");
+                              setAddMemberRoles({ viewer: true, submitter: false });
                             } else {
                               alert(result.error || "Failed to add user.");
                             }
                             setIsUpdatingAccess(false);
                           }}
-                          className="flex gap-2"
+                          className="flex flex-col gap-2"
                         >
-                          <input
-                            type="email"
-                            placeholder="Enter email address"
-                            value={shareEmailInput}
-                            onChange={(e) => setShareEmailInput(e.target.value)}
-                            className="flex-1 border border-zinc-200 rounded-lg px-2.5 py-1.5 text-xs text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
-                            required
-                          />
-                          <button
-                            type="submit"
-                            disabled={isUpdatingAccess}
-                            className="px-3 py-1.5 text-xs font-medium text-white bg-zinc-900 hover:bg-zinc-800 rounded-lg transition-colors shrink-0 disabled:opacity-50"
-                          >
-                            Add
-                          </button>
+                          <div className="flex gap-2">
+                            <input
+                              type="email"
+                              placeholder="Enter email address"
+                              value={shareEmailInput}
+                              onChange={(e) => setShareEmailInput(e.target.value)}
+                              className="flex-1 border border-zinc-200 rounded-lg px-2.5 py-1.5 text-xs text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                              required
+                            />
+                            <button
+                              type="submit"
+                              disabled={isUpdatingAccess}
+                              className="px-3 py-1.5 text-xs font-medium text-white bg-zinc-900 hover:bg-zinc-800 rounded-lg transition-colors shrink-0 disabled:opacity-50"
+                            >
+                              Add
+                            </button>
+                          </div>
+                          
+                          <div className="flex items-center gap-4 px-1 py-0.5">
+                            <label className="flex items-center gap-1.5 text-[11px] text-zinc-600 cursor-pointer font-medium select-none">
+                              <input
+                                type="checkbox"
+                                checked={addMemberRoles.viewer}
+                                onChange={(e) => handleAddRoleChange('viewer', e.target.checked)}
+                                className="w-3.5 h-3.5 rounded border-zinc-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                              />
+                              <span>Viewer</span>
+                            </label>
+                            <label className="flex items-center gap-1.5 text-[11px] text-zinc-600 cursor-pointer font-medium select-none">
+                              <input
+                                type="checkbox"
+                                checked={addMemberRoles.submitter}
+                                onChange={(e) => handleAddRoleChange('submitter', e.target.checked)}
+                                className="w-3.5 h-3.5 rounded border-zinc-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                              />
+                              <span>Submitter</span>
+                            </label>
+                          </div>
                         </form>
 
                         {formMembers.length > 0 ? (
                           <div className="max-h-36 overflow-y-auto border border-zinc-100 rounded-lg divide-y divide-zinc-50 mt-1">
-                            {formMembers.map((member) => (
-                              <div key={member.user_id} className="flex items-center justify-between p-2 text-xs">
-                                <span className="text-zinc-600 truncate max-w-[180px] font-medium" title={member.email}>
-                                  {member.email}
-                                </span>
-                                <div className="flex items-center gap-1">
-                                  <span className="text-[10px] text-zinc-400 font-semibold uppercase bg-zinc-50 border border-zinc-200/50 px-1.5 py-0.5 rounded">
-                                    {member.role}
-                                  </span>
-                                  <button
-                                    onClick={async () => {
-                                      setIsUpdatingAccess(true);
-                                      const ok = await removeFormMember(formId, member.user_id);
-                                      if (ok.ok) {
-                                        setFormMembers((prev) => prev.filter((m) => m.user_id !== member.user_id));
-                                      } else {
-                                        alert(ok.error || "Failed to remove member.");
-                                      }
-                                      setIsUpdatingAccess(false);
-                                    }}
-                                    disabled={isUpdatingAccess}
-                                    className="p-1 text-zinc-400 hover:text-red-500 hover:bg-zinc-50 rounded transition-colors"
-                                    title="Revoke access"
+                            {formMembers.map((member) => {
+                              const displayName = member.name ? member.name.trim() : member.email.split('@')[0];
+                              return (
+                                <div key={member.user_id} className="flex items-center justify-between p-2 text-xs">
+                                  <span 
+                                    className="text-zinc-600 truncate max-w-[140px] font-semibold cursor-help" 
+                                    title={member.email}
                                   >
-                                    <Trash size={12} />
-                                  </button>
+                                    {displayName}
+                                  </span>
+                                  <div className="flex items-center gap-1.5">
+                                    {member.role === "owner" ? (
+                                      <span className="text-[10px] text-zinc-400 font-semibold uppercase bg-zinc-50 border border-zinc-200/50 px-1.5 py-0.5 rounded">
+                                        owner
+                                      </span>
+                                    ) : (
+                                      <select
+                                        value={member.role === "editor" ? "submitter" : member.role}
+                                        onChange={async (e) => {
+                                          const newRole = e.target.value as "viewer" | "submitter";
+                                          setIsUpdatingAccess(true);
+                                          const result = await updateFormMemberRole(formId, member.user_id, newRole);
+                                          if (result.ok) {
+                                            setFormMembers(prev => prev.map(m => m.user_id === member.user_id ? { ...m, role: newRole } : m));
+                                          } else {
+                                            alert(result.error || "Failed to update role.");
+                                          }
+                                          setIsUpdatingAccess(false);
+                                        }}
+                                        disabled={isUpdatingAccess}
+                                        className="text-[10px] text-zinc-600 font-medium bg-zinc-50 border border-zinc-200 rounded px-1.5 py-0.5 outline-none cursor-pointer focus:ring-1 focus:ring-blue-500"
+                                      >
+                                        <option value="viewer">Viewer</option>
+                                        <option value="submitter">Submitter</option>
+                                      </select>
+                                    )}
+                                    <button
+                                      onClick={async () => {
+                                        setIsUpdatingAccess(true);
+                                        const ok = await removeFormMember(formId, member.user_id);
+                                        if (ok.ok) {
+                                          setFormMembers((prev) => prev.filter((m) => m.user_id !== member.user_id));
+                                        } else {
+                                          alert(ok.error || "Failed to remove member.");
+                                        }
+                                        setIsUpdatingAccess(false);
+                                      }}
+                                      disabled={isUpdatingAccess}
+                                      className="p-1 text-zinc-400 hover:text-red-500 hover:bg-zinc-50 rounded transition-colors"
+                                      title="Revoke access"
+                                    >
+                                      <Trash size={12} />
+                                    </button>
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         ) : (
                           <p className="text-[10px] text-zinc-400 text-center py-2 bg-zinc-50 rounded-lg border border-dashed border-zinc-200">

@@ -266,7 +266,8 @@ export interface SharingSettings {
   members: {
     user_id: string;
     email: string;
-    role: "owner" | "editor" | "viewer" | "submitter";
+    name: string;
+    role: "owner" | "viewer" | "submitter";
   }[];
 }
 
@@ -293,19 +294,22 @@ export async function fetchSharingSettings(formId: string): Promise<SharingSetti
   const userIds = membersData.map((m) => m.user_id);
   const { data: profiles } = await supabase
     .from("user_profiles")
-    .select("id, email")
+    .select("id, email, name")
     .in("id", userIds);
 
   const emailMap = new Map<string, string>();
+  const nameMap = new Map<string, string>();
   profiles?.forEach((p) => {
     if (p.email) emailMap.set(p.id, p.email);
+    if (p.name) nameMap.set(p.id, p.name);
   });
 
   const members = membersData
     .map((m) => ({
       user_id: m.user_id,
       email: emailMap.get(m.user_id) || "",
-      role: m.role as "owner" | "editor" | "viewer" | "submitter",
+      name: nameMap.get(m.user_id) || "",
+      role: m.role as "owner" | "viewer" | "submitter",
     }))
     .filter((m) => m.email !== ""); // Filter out any members without matching profiles
 
@@ -328,12 +332,12 @@ export async function updateFormAccess(formId: string, accessOpen: boolean): Pro
 export async function addFormMember(
   formId: string,
   email: string,
-  role: "owner" | "editor" | "viewer" | "submitter" = "submitter"
-): Promise<{ ok: boolean; member?: { user_id: string; email: string; role: "owner" | "editor" | "viewer" | "submitter" }; error?: string }> {
+  role: "owner" | "viewer" | "submitter" = "submitter"
+): Promise<{ ok: boolean; member?: { user_id: string; email: string; name: string; role: "owner" | "viewer" | "submitter" }; error?: string }> {
   // 1. Find user in user_profiles
   const { data: profile, error: profileError } = await supabase
     .from("user_profiles")
-    .select("id")
+    .select("id, name, email")
     .eq("email", email.trim().toLowerCase())
     .maybeSingle();
 
@@ -364,7 +368,8 @@ export async function addFormMember(
     ok: true,
     member: {
       user_id: profile.id,
-      email: email.trim().toLowerCase(),
+      email: profile.email || email.trim().toLowerCase(),
+      name: profile.name || "",
       role: role,
     }
   };
@@ -382,4 +387,23 @@ export async function removeFormMember(formId: string, userId: string): Promise<
   }
   return { ok: true };
 }
+
+export async function updateFormMemberRole(
+  formId: string,
+  userId: string,
+  role: "owner" | "viewer" | "submitter"
+): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase
+    .from("form_members")
+    .update({ role })
+    .eq("form_id", formId)
+    .eq("user_id", userId);
+
+  if (error) {
+    console.error("Failed to update form member role:", error);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
+
 

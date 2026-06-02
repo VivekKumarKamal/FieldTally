@@ -5,6 +5,7 @@ import { useRouter, useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
 import FormRenderer from "../../../components/FormRenderer";
+import { FileDown, Copy, Check } from "lucide-react";
 
 function PoweredByBadge() {
   return (
@@ -36,6 +37,21 @@ function SubmissionPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [isLatestVersion, setIsLatestVersion] = useState(true);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [copiedUrl, setCopiedUrl] = useState(false);
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(window.location.href.split('?')[0]);
+    setCopiedUrl(true);
+    setTimeout(() => setCopiedUrl(false), 2000);
+  };
+
+  const handleExportPDF = () => {
+    if (!formSchema) return;
+    localStorage.setItem("export_form_schema", JSON.stringify(formSchema));
+    localStorage.setItem("export_form_title", formTitle);
+    window.open("/create-form/export-pdf", "_blank");
+  };
 
   useEffect(() => {
     async function loadForm() {
@@ -80,32 +96,42 @@ function SubmissionPageContent() {
           return;
         }
 
+        // Get user role information
+        let resolvedRole: string | null = null;
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (user) {
+          if (user.id === form.created_by) {
+            resolvedRole = 'owner';
+          } else {
+            const { data: member } = await supabase
+              .from('form_members')
+              .select('role')
+              .eq('form_id', form.id)
+              .eq('user_id', user.id)
+              .maybeSingle();
+            if (member) {
+              resolvedRole = member.role;
+            }
+          }
+        }
+
         // Access Control Logic
         if (!form.access_open) {
-          const { data: { user } } = await supabase.auth.getUser();
-          
           if (!user) {
             setError("restricted");
             setLoading(false);
             return;
           }
 
-          if (user.id !== form.created_by) {
-            // Check form_members
-            const { data: member, error: memberError } = await supabase
-              .from('form_members')
-              .select('role')
-              .eq('form_id', form.id)
-              .eq('user_id', user.id)
-              .single();
-
-            if (memberError || !member) {
-              setError("You do not have permission to access this form.");
-              setLoading(false);
-              return;
-            }
+          if (user.id !== form.created_by && !resolvedRole) {
+            setError("You do not have permission to access this form.");
+            setLoading(false);
+            return;
           }
         }
+
+        setUserRole(resolvedRole);
 
         // Fetch latest version info to see if requested version is latest
         const { data: latestVersionResult, error: latestError } = await supabase.from('form_versions')
@@ -160,6 +186,11 @@ function SubmissionPageContent() {
   }, [formId, versionQuery]);
 
   const handleSubmit = async (answers: any) => {
+    if (userRole === 'viewer') {
+      alert("Viewers are not permitted to submit responses.");
+      return;
+    }
+
     if (formId === "preview") {
       console.log("Preview submission data (database insert bypassed):", answers);
       setSubmitted(true);
@@ -271,16 +302,46 @@ function SubmissionPageContent() {
   return (
     <div className="min-h-screen bg-zinc-50 relative pb-16">
       {!isLatestVersion && (
-        <div className="bg-amber-100 text-amber-800 px-4 py-3 text-sm text-center font-medium sticky top-0 z-50">
+        <div className="bg-amber-100 text-amber-800 px-4 py-3 text-sm text-center font-medium sticky top-[45px] z-50">
           Note: You are viewing an older version of this form.
         </div>
       )}
-      <div className="pt-12 pb-20 px-4 sm:px-6 max-w-3xl mx-auto">
+      
+      {/* Utility top bar */}
+      <div className="w-full bg-white/80 backdrop-blur-xl border-b border-zinc-200/60 sticky top-0 z-40 px-6 py-2 flex items-center justify-between shadow-2xs">
+        <Link href="/" className="flex items-center gap-2">
+          <div className="w-5 h-5 bg-gradient-to-br from-zinc-800 to-zinc-600 rounded flex items-center justify-center">
+            <span className="text-white text-[10px] font-bold tracking-tighter">FT</span>
+          </div>
+          <span className="font-semibold text-zinc-700 tracking-tight text-xs">FieldTally</span>
+        </Link>
+        
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleCopyLink}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-zinc-600 hover:text-zinc-800 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200/60 rounded-lg shadow-2xs transition-all cursor-pointer"
+          >
+            {copiedUrl ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5 text-zinc-400" />}
+            <span>{copiedUrl ? "Copied Link!" : "Copy Link"}</span>
+          </button>
+          
+          <button
+            onClick={handleExportPDF}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-zinc-600 hover:text-zinc-800 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200/60 rounded-lg shadow-2xs transition-all cursor-pointer"
+          >
+            <FileDown className="w-3.5 h-3.5 text-zinc-400" />
+            <span>Export PDF</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="pt-8 pb-20 px-4 sm:px-6 max-w-3xl mx-auto">
         <FormRenderer
           schema={formSchema}
           title={formTitle}
-          progressBarOffset={0}
+          progressBarOffset="45px"
           onSubmit={handleSubmit}
+          readOnly={userRole === 'viewer'}
         />
       </div>
 
