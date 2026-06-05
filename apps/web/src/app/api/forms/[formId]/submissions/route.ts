@@ -14,6 +14,10 @@ export async function GET(
     const user = await getAuthenticatedUser(req);
     const userId = user?.id || null;
 
+    if (!userId) {
+      return NextResponse.json({ error: "Authentication required to view submissions." }, { status: 401 });
+    }
+
     // 1. Check if the user has viewer access (can see all submissions)
     const { hasAccess: isViewer } = await checkFormAccess(supabase, formId, userId, "viewer");
 
@@ -32,12 +36,7 @@ export async function GET(
       }
 
       // If they are an authenticated submitter, filter by their userId
-      if (userId) {
-        query = query.eq("submitted_by", userId);
-      } else {
-        // Anonymous submitters cannot view submissions because they cannot be verified
-        return NextResponse.json({ error: "Anonymous users cannot view submissions." }, { status: 403 });
-      }
+      query = query.eq("submitted_by", userId);
     }
 
     if (versionStr) {

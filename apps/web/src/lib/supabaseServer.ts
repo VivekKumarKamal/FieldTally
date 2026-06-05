@@ -27,8 +27,12 @@ export function getSupabaseClient(req: NextRequest) {
  * Retrieves the authenticated user using the request's bearer token.
  */
 export async function getAuthenticatedUser(req: NextRequest) {
+  const authHeader = req.headers.get("authorization");
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : null;
+  if (!token) return null;
+
   const supabase = getSupabaseClient(req);
-  const { data: { user }, error } = await supabase.auth.getUser();
+  const { data: { user }, error } = await supabase.auth.getUser(token);
   if (error || !user) {
     return null;
   }
@@ -108,6 +112,10 @@ export async function checkSubmissionAccess(
   userId: string | null,
   action: "read" | "update"
 ) {
+  if (!userId) {
+    return { hasAccess: false, submission: null, error: "Authentication required to access submissions." };
+  }
+
   // 1. Fetch submission
   const { data: submission, error: subError } = await supabase
     .from("submissions")
@@ -120,7 +128,7 @@ export async function checkSubmissionAccess(
   }
 
   // 2. If the user is the original submitter, they have access
-  if (userId && submission.submitted_by === userId) {
+  if (submission.submitted_by === userId) {
     return { hasAccess: true, submission };
   }
 
