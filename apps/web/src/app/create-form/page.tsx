@@ -232,6 +232,9 @@ function FormEditorContent() {
     const json = editorRef.current.getJSON();
     localStorage.setItem("export_form_schema", JSON.stringify(json));
     localStorage.setItem("export_form_title", formTitle);
+    if (formId) {
+      localStorage.setItem("export_form_id", formId);
+    }
     window.open("/create-form/export-pdf", "_blank");
   };
 
@@ -498,6 +501,9 @@ function FormEditorContent() {
     const json = editor.getJSON();
     localStorage.setItem("preview_form_schema", JSON.stringify(json));
     localStorage.setItem("preview_form_title", formTitle);
+    if (formId) {
+      localStorage.setItem("preview_form_id", formId);
+    }
     router.push("/preview");
   };
 

@@ -41,10 +41,20 @@ function ExportPdfContent() {
         setFormSchema(JSON.parse(raw));
         setFormTitle(title);
       } catch {
-        router.push("/create-form");
+        const exportFormId = localStorage.getItem("export_form_id");
+        if (exportFormId) {
+          router.push(`/create-form?form=${exportFormId}`);
+        } else {
+          router.push("/create-form");
+        }
       }
     } else {
-      router.push("/create-form");
+      const exportFormId = localStorage.getItem("export_form_id");
+      if (exportFormId) {
+        router.push(`/create-form?form=${exportFormId}`);
+      } else {
+        router.push("/create-form");
+      }
     }
   }, [router]);
 
