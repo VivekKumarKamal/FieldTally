@@ -22,7 +22,7 @@ import {
   Type, Hash, Mail, Phone, Link2, Calendar, Clock, AlignLeft,
   CheckSquare, CircleDot, MapPin, Image, PenTool,
   Heading1, Heading2, Heading3, List, ListOrdered, Cloud, Check, History, CloudUpload, CloudOff, CloudCheck, ChevronLeft,
-  FileDown, LayoutGrid, Sparkles, Share2, Globe, Lock
+  FileDown, LayoutGrid, Sparkles, Share2, Globe, Lock, Trophy
 } from "lucide-react";
 import * as Popover from "@radix-ui/react-popover";
 import * as Switch from "@radix-ui/react-switch";
@@ -180,6 +180,27 @@ function FormEditorContent() {
   const [activeNodeType, setActiveNodeType] = useState<string | null>(null);
   const { setActiveBlockId } = useLogicStore();
 
+  // --- Quiz State ---
+  const [correctAnswer, setCorrectAnswer] = useState<any>(null);
+  const [quizPoints, setQuizPoints] = useState<number>(1);
+  const [activeNodeOptions, setActiveNodeOptions] = useState<string[]>([]);
+  const [quizMode, setQuizMode] = useState(false);
+  const [showResultsImmediately, setShowResultsImmediately] = useState(true);
+
+  const updateDocAttr = (key: string, value: any) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.view.dispatch(
+      editor.state.tr.setNodeMarkup(0, null, {
+        ...editor.state.doc.attrs,
+        [key]: value,
+      })
+    );
+    if (key === "quizMode") setQuizMode(value);
+    if (key === "showResultsImmediately") setShowResultsImmediately(value);
+    saveForm(editor.getJSON());
+  };
+
   // --- Form Saving State ---
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [formId, setFormId] = useState<string | null>(null);
@@ -332,6 +353,20 @@ function FormEditorContent() {
     }, 1500);
   };
 
+  /** Extract option texts from checkbox/MCQ block children */
+  const extractOptionsFromNode = (node: any): string[] => {
+    const opts: string[] = [];
+    node.forEach((child: any) => {
+      if (child.type.name === "checkboxOption" || child.type.name === "multipleChoiceOption") {
+        const text = child.textContent.trim();
+        if (text) opts.push(text);
+      }
+    });
+    return opts;
+  };
+
+  const QUIZ_BLOCK_TYPES = new Set(["multipleChoiceBlock", "checkboxBlock", "numberAnswerBlock"]);
+
   const handleMenuOpenChange = (open: boolean) => {
     setMenuOpen(open);
     if (open) {
@@ -343,6 +378,17 @@ function FormEditorContent() {
           setIsRequired(node.attrs.required !== false);
           setActiveBlockId(node.attrs.id || null);
           setActiveNodeType(resolveTargetKey(node.type.name, node.attrs));
+
+          // Read quiz attributes
+          if (QUIZ_BLOCK_TYPES.has(node.type.name)) {
+            setCorrectAnswer(node.attrs.correctAnswer ?? null);
+            setQuizPoints(node.attrs.quizPoints ?? 1);
+            setActiveNodeOptions(extractOptionsFromNode(node));
+          } else {
+            setCorrectAnswer(null);
+            setQuizPoints(1);
+            setActiveNodeOptions([]);
+          }
         }
       }
     } else {
@@ -372,6 +418,11 @@ function FormEditorContent() {
     editorRef.current = editor;
     lastSelectionRef.current = editor.state.selection.from;
     setIsEditorEmpty(editor.isEmpty);
+
+    // Read document attributes
+    const docAttrs = editor.state.doc.attrs;
+    setQuizMode(docAttrs.quizMode ?? false);
+    setShowResultsImmediately(docAttrs.showResultsImmediately ?? true);
   };
 
   const getHandleTargetPos = () => {
@@ -717,6 +768,64 @@ function FormEditorContent() {
               <Sparkles size={14} className={isAiChatOpen ? "" : "animate-pulse"} />
               <span>AI Assistant</span>
             </button>
+
+            <Popover.Root>
+              <Popover.Trigger asChild>
+                <button
+                  className={`px-3 py-1 text-sm font-medium transition-all rounded-lg flex items-center gap-1.5 cursor-pointer border ${
+                    quizMode
+                      ? "bg-emerald-50 border-emerald-200 text-emerald-700 shadow-sm"
+                      : "bg-zinc-100 border-zinc-200 text-zinc-600 hover:bg-zinc-200"
+                  }`}
+                  title="Quiz Settings"
+                >
+                  <Trophy size={14} className={quizMode ? "text-emerald-600" : "text-zinc-400"} />
+                  <span>Quiz Settings</span>
+                </button>
+              </Popover.Trigger>
+              <Popover.Content align="center" sideOffset={8} className="w-80 p-4 rounded-xl border border-zinc-200 bg-white shadow-xl z-[150] outline-none">
+                <div className="flex flex-col gap-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-zinc-950">Quiz Settings</h3>
+                    <p className="text-xs text-zinc-500 mt-0.5">Turn this form into an auto-graded quiz/assessment.</p>
+                  </div>
+
+                  <div className="h-px bg-zinc-100" />
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex flex-col pr-4">
+                      <span className="text-xs font-semibold text-zinc-800">Quiz Mode</span>
+                      <span className="text-[10px] text-zinc-400">Enable auto-grading for MCQ/Checkbox/Number questions.</span>
+                    </div>
+                    <Switch.Root
+                      checked={quizMode}
+                      onCheckedChange={(checked) => updateDocAttr("quizMode", checked)}
+                      className="w-10 h-6 bg-zinc-200 rounded-full relative data-[state=checked]:bg-emerald-500 outline-none cursor-pointer shadow-inner transition-colors"
+                    >
+                      <Switch.Thumb className="block w-4 h-4 bg-white rounded-full transition-transform duration-100 translate-x-1 will-change-transform data-[state=checked]:translate-x-5 shadow-sm" />
+                    </Switch.Root>
+                  </div>
+
+                  {quizMode && (
+                    <div className="flex flex-col gap-3 pt-1 border-t border-zinc-100 animate-in fade-in duration-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col pr-4">
+                          <span className="text-xs font-semibold text-zinc-800">Immediate Results</span>
+                          <span className="text-[10px] text-zinc-400">Show submission results and scores to respondents immediately.</span>
+                        </div>
+                        <Switch.Root
+                          checked={showResultsImmediately}
+                          onCheckedChange={(checked) => updateDocAttr("showResultsImmediately", checked)}
+                          className="w-10 h-6 bg-zinc-200 rounded-full relative data-[state=checked]:bg-emerald-500 outline-none cursor-pointer shadow-inner transition-colors"
+                        >
+                          <Switch.Thumb className="block w-4 h-4 bg-white rounded-full transition-transform duration-100 translate-x-1 will-change-transform data-[state=checked]:translate-x-5 shadow-sm" />
+                        </Switch.Root>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </Popover.Content>
+            </Popover.Root>
 
             <button
               onClick={handleSubmit}
@@ -1097,6 +1206,191 @@ function FormEditorContent() {
                     </div>
 
                     <div className="h-px bg-zinc-100 my-1 mx-2" />
+
+                    {/* Quiz Answer Configuration */}
+                    {activeNodePos !== null && editorRef.current && QUIZ_BLOCK_TYPES.has(editorRef.current.state.doc.nodeAt(activeNodePos)?.type.name || "") && (() => {
+                      const updateQuizAttr = (key: string, value: any) => {
+                        if (activeNodePos === null || !editorRef.current) return;
+                        const node = editorRef.current.state.doc.nodeAt(activeNodePos);
+                        if (!node) return;
+                        editorRef.current.view.dispatch(
+                          editorRef.current.state.tr.setNodeMarkup(activeNodePos, null, {
+                            ...node.attrs,
+                            [key]: value,
+                          })
+                        );
+                      };
+
+                      const nodeType = editorRef.current.state.doc.nodeAt(activeNodePos)?.type.name;
+
+                      return (
+                        <>
+                          <div className="px-2 py-1.5">
+                            <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Quiz Answer</span>
+                          </div>
+
+                          {/* MCQ: radio buttons */}
+                          {nodeType === "multipleChoiceBlock" && activeNodeOptions.length > 0 && (
+                            <div className="px-2 pb-1.5 flex flex-col gap-1">
+                              {activeNodeOptions.map((opt, i) => {
+                                const isCorrect = correctAnswer === opt;
+                                return (
+                                  <button
+                                    key={i}
+                                    className={`flex items-center gap-2 px-2 py-1 rounded text-xs text-left transition-colors w-full ${isCorrect ? "bg-emerald-50 text-emerald-700 font-semibold" : "text-zinc-600 hover:bg-zinc-50"}`}
+                                    onClick={() => {
+                                      const newVal = isCorrect ? null : opt;
+                                      setCorrectAnswer(newVal);
+                                      updateQuizAttr("correctAnswer", newVal);
+                                    }}
+                                  >
+                                    <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0 ${isCorrect ? "border-emerald-500 bg-emerald-500" : "border-zinc-300"}`}>
+                                      {isCorrect && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                    </div>
+                                    <span className="truncate">{opt}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* Checkbox: check multiple correct */}
+                          {nodeType === "checkboxBlock" && activeNodeOptions.length > 0 && (
+                            <div className="px-2 pb-1.5 flex flex-col gap-1">
+                              {activeNodeOptions.map((opt, i) => {
+                                const selected: string[] = Array.isArray(correctAnswer) ? correctAnswer : [];
+                                const isCorrect = selected.includes(opt);
+                                return (
+                                  <button
+                                    key={i}
+                                    className={`flex items-center gap-2 px-2 py-1 rounded text-xs text-left transition-colors w-full ${isCorrect ? "bg-emerald-50 text-emerald-700 font-semibold" : "text-zinc-600 hover:bg-zinc-50"}`}
+                                    onClick={() => {
+                                      const newArr = isCorrect ? selected.filter(s => s !== opt) : [...selected, opt];
+                                      const newVal = newArr.length > 0 ? newArr : null;
+                                      setCorrectAnswer(newVal);
+                                      updateQuizAttr("correctAnswer", newVal);
+                                    }}
+                                  >
+                                    <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${isCorrect ? "border-emerald-500 bg-emerald-500" : "border-zinc-300"}`}>
+                                      {isCorrect && (
+                                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5L4.5 7.5L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                      )}
+                                    </div>
+                                    <span className="truncate">{opt}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* Number: exact or range */}
+                          {nodeType === "numberAnswerBlock" && (
+                            <div className="px-2 pb-1.5 flex flex-col gap-1.5">
+                              <div className="flex gap-1">
+                                <button
+                                  className={`flex-1 px-2 py-1 rounded text-[11px] font-semibold transition-colors ${(!correctAnswer || correctAnswer?.type === "exact") ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "text-zinc-500 bg-zinc-50 border border-zinc-200 hover:bg-zinc-100"}`}
+                                  onClick={() => {
+                                    const newVal = { type: "exact" as const, value: correctAnswer?.value ?? undefined };
+                                    setCorrectAnswer(newVal);
+                                    updateQuizAttr("correctAnswer", newVal.value !== undefined ? newVal : null);
+                                  }}
+                                >Exact</button>
+                                <button
+                                  className={`flex-1 px-2 py-1 rounded text-[11px] font-semibold transition-colors ${correctAnswer?.type === "range" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "text-zinc-500 bg-zinc-50 border border-zinc-200 hover:bg-zinc-100"}`}
+                                  onClick={() => {
+                                    const newVal = { type: "range" as const, min: correctAnswer?.min ?? undefined, max: correctAnswer?.max ?? undefined };
+                                    setCorrectAnswer(newVal);
+                                    updateQuizAttr("correctAnswer", (newVal.min !== undefined || newVal.max !== undefined) ? newVal : null);
+                                  }}
+                                >Range</button>
+                              </div>
+                              {(!correctAnswer || correctAnswer?.type === "exact") && (
+                                <input
+                                  type="number"
+                                  placeholder="Correct value"
+                                  value={correctAnswer?.value ?? ""}
+                                  className="w-full px-2 py-1 text-xs border border-zinc-200 rounded focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
+                                  onMouseDown={e => e.stopPropagation()}
+                                  onClick={e => e.stopPropagation()}
+                                  onChange={e => {
+                                    const v = e.target.value;
+                                    const newVal = v === "" ? null : { type: "exact" as const, value: Number(v) };
+                                    setCorrectAnswer(newVal);
+                                    updateQuizAttr("correctAnswer", newVal);
+                                  }}
+                                />
+                              )}
+                              {correctAnswer?.type === "range" && (
+                                <div className="flex gap-1.5">
+                                  <input
+                                    type="number"
+                                    placeholder="Min"
+                                    value={correctAnswer?.min ?? ""}
+                                    className="flex-1 px-2 py-1 text-xs border border-zinc-200 rounded focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
+                                    onMouseDown={e => e.stopPropagation()}
+                                    onClick={e => e.stopPropagation()}
+                                    onChange={e => {
+                                      const v = e.target.value;
+                                      const newVal = { ...correctAnswer, min: v === "" ? undefined : Number(v) };
+                                      setCorrectAnswer(newVal);
+                                      updateQuizAttr("correctAnswer", (newVal.min !== undefined || newVal.max !== undefined) ? newVal : null);
+                                    }}
+                                  />
+                                  <input
+                                    type="number"
+                                    placeholder="Max"
+                                    value={correctAnswer?.max ?? ""}
+                                    className="flex-1 px-2 py-1 text-xs border border-zinc-200 rounded focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
+                                    onMouseDown={e => e.stopPropagation()}
+                                    onClick={e => e.stopPropagation()}
+                                    onChange={e => {
+                                      const v = e.target.value;
+                                      const newVal = { ...correctAnswer, max: v === "" ? undefined : Number(v) };
+                                      setCorrectAnswer(newVal);
+                                      updateQuizAttr("correctAnswer", (newVal.min !== undefined || newVal.max !== undefined) ? newVal : null);
+                                    }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Points input */}
+                          <div className="flex items-center justify-between px-2 py-1.5">
+                            <span className="text-xs text-zinc-600">Points</span>
+                            <input
+                              type="number"
+                              min={0}
+                              step={1}
+                              value={quizPoints}
+                              className="w-16 px-2 py-0.5 text-xs text-right border border-zinc-200 rounded focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
+                              onMouseDown={e => e.stopPropagation()}
+                              onClick={e => e.stopPropagation()}
+                              onChange={e => {
+                                const v = Math.max(0, Number(e.target.value) || 0);
+                                setQuizPoints(v);
+                                updateQuizAttr("quizPoints", v);
+                              }}
+                            />
+                          </div>
+
+                          {correctAnswer && (
+                            <button
+                              className="flex items-center gap-1.5 px-2 py-1 mx-2 mb-1 rounded text-[11px] text-red-500 hover:bg-red-50 transition-colors"
+                              onClick={() => {
+                                setCorrectAnswer(null);
+                                updateQuizAttr("correctAnswer", null);
+                              }}
+                            >
+                              <Trash size={11} />
+                              <span>Clear answer</span>
+                            </button>
+                          )}
+
+                          <div className="h-px bg-zinc-100 my-1 mx-2" />
+                        </>
+                      );
+                    })()}
                   </>
                 )}
 

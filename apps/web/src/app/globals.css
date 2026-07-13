@@ -501,6 +501,51 @@ body {
   vertical-align: middle;
 }
 
+/* ── Quiz Answer Badge (React blocks) ── */
+.tiptap .quiz-answer-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background-color: #d1fae5;
+  color: #059669;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
+  flex-shrink: 0;
+  cursor: default;
+  margin-left: 4px;
+  transition: all 0.15s ease;
+}
+
+.tiptap:not(.form-renderer) .quiz-answer-badge:hover {
+  background-color: #a7f3d0;
+}
+
+/* Quiz answer indicator for ProseMirror checkbox/MCQ blocks (::before on title) */
+.tiptap:not(.form-renderer) [data-correct-answer] div[data-type="checkbox-title"]::before,
+.tiptap:not(.form-renderer) [data-correct-answer] div[data-type="multiple-choice-title"]::before {
+  content: "✓";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background-color: #d1fae5;
+  color: #059669;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
+  flex-shrink: 0;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
 /* Hide <br> inside empty checkbox/multipleChoice titles so ::after stays inline */
 .tiptap [data-required="true"] div[data-type="checkbox-title"].is-empty br,
 .tiptap [data-required="true"] div[data-type="multiple-choice-title"].is-empty br {

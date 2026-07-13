@@ -96,6 +96,91 @@ type FormRendererProps = {
   readOnly?: boolean;
 };
 
+function gradeQuiz(schema: any, answers: Record<string, any>) {
+  if (!schema?.content) return null;
+
+  let totalPoints = 0;
+  let score = 0;
+  let totalCount = 0;
+  let correctCount = 0;
+
+  const details: Record<string, { correct: boolean; pointsEarned: number; maxPoints: number }> = {};
+
+  for (const node of schema.content) {
+    const id = node.attrs?.id;
+    if (!id || node.type === "logicBlock") continue;
+
+    // Check if correct answer is configured
+    const correctAnswer = node.attrs?.correctAnswer;
+    if (correctAnswer === undefined || correctAnswer === null) continue;
+
+    const maxPoints = node.attrs?.quizPoints ?? 1;
+    totalPoints += maxPoints;
+    totalCount++;
+
+    const val = answers[id];
+    let isCorrect = false;
+    let pointsEarned = 0;
+
+    if (node.type === "multipleChoiceBlock") {
+      isCorrect = val === correctAnswer;
+      pointsEarned = isCorrect ? maxPoints : 0;
+      if (isCorrect) correctCount++;
+    } else if (node.type === "checkboxBlock") {
+      const correctList: string[] = Array.isArray(correctAnswer) ? correctAnswer : [];
+      const selectedList: string[] = Array.isArray(val) ? val : [];
+
+      if (selectedList.length === 0) {
+        isCorrect = correctList.length === 0;
+        pointsEarned = isCorrect ? maxPoints : 0;
+        if (isCorrect) correctCount++;
+      } else {
+        const hasWrongSelection = selectedList.some(opt => !correctList.includes(opt));
+        if (hasWrongSelection) {
+          isCorrect = false;
+          pointsEarned = 0;
+        } else {
+          const selectedCorrectCount = selectedList.filter(opt => correctList.includes(opt)).length;
+          pointsEarned = correctList.length > 0 ? (selectedCorrectCount / correctList.length) * maxPoints : maxPoints;
+          isCorrect = selectedCorrectCount === correctList.length;
+          if (isCorrect) correctCount++;
+        }
+      }
+    } else if (node.type === "numberAnswerBlock") {
+      const numVal = val !== "" && val !== null ? Number(val) : null;
+      if (numVal !== null && !isNaN(numVal)) {
+        if (correctAnswer.type === "exact") {
+          isCorrect = numVal === correctAnswer.value;
+        } else if (correctAnswer.type === "range") {
+          const min = correctAnswer.min !== undefined ? correctAnswer.min : -Infinity;
+          const max = correctAnswer.max !== undefined ? correctAnswer.max : Infinity;
+          isCorrect = numVal >= min && numVal <= max;
+        }
+      }
+      pointsEarned = isCorrect ? maxPoints : 0;
+      if (isCorrect) correctCount++;
+    }
+
+    details[id] = {
+      correct: isCorrect,
+      pointsEarned,
+      maxPoints
+    };
+    score += pointsEarned;
+  }
+
+  const percentage = totalPoints > 0 ? Math.round((score / totalPoints) * 100) : 0;
+
+  return {
+    score,
+    totalPoints,
+    percentage,
+    correctCount,
+    totalCount,
+    details
+  };
+}
+
 // ─── FormRenderer ────────────────────────────────────────
 
 export default function FormRenderer({ schema, title, progressBarOffset, onSubmit, isPrinting = false, readOnly = false }: FormRendererProps) {
@@ -104,6 +189,7 @@ export default function FormRenderer({ schema, title, progressBarOffset, onSubmi
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [gpsState, setGpsState] = useState<Record<string, { loading: boolean; error: string | null }>>({});
   const [uploadState, setUploadState] = useState<Record<string, { loading: boolean; error: string | null }>>({});
+  const [quizResult, setQuizResult] = useState<any>(null);
 
   const params = useParams() || {};
   const formId = (params.formId as string) || "preview";
@@ -303,7 +389,14 @@ export default function FormRenderer({ schema, title, progressBarOffset, onSubmi
       document.getElementById(`field-${first}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
-    if (onSubmit) onSubmit(answers);
+    let answersToSubmit = { ...answers };
+    if (schema?.attrs?.quizMode === true) {
+      const result = gradeQuiz(schema, answers);
+      setQuizResult(result);
+      answersToSubmit.__quiz_result = result;
+    }
+
+    if (onSubmit) onSubmit(answersToSubmit);
     setSubmitted(true);
   };
 
@@ -327,6 +420,9 @@ export default function FormRenderer({ schema, title, progressBarOffset, onSubmi
 
   // ─── Success screen ───
   if (submitted) {
+    const isQuiz = schema?.attrs?.quizMode === true;
+    const showImmediate = schema?.attrs?.showResultsImmediately !== false;
+
     return (
       <div className="flex items-center justify-center py-32">
         <div className="text-center max-w-md px-8">
@@ -334,9 +430,22 @@ export default function FormRenderer({ schema, title, progressBarOffset, onSubmi
             <CheckCircle2 size={32} className="text-emerald-600" />
           </div>
           <h2 className="text-2xl font-bold text-zinc-800 mb-2">Response submitted!</h2>
-          <p className="text-zinc-500 mb-8">Your response has been recorded successfully.</p>
+          <p className="text-zinc-500 mb-6">Your response has been recorded successfully.</p>
+          
+          {isQuiz && showImmediate && quizResult && (
+            <div className="mb-8 p-6 bg-zinc-50 border border-zinc-200/80 rounded-2xl flex flex-col gap-2 items-center justify-center">
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Your Score</span>
+              <span className="text-3xl font-extrabold text-zinc-800 leading-none">
+                {quizResult.score} / {quizResult.totalPoints}
+              </span>
+              <span className="text-xs font-semibold text-emerald-600">
+                ({quizResult.percentage}% Correct)
+              </span>
+            </div>
+          )}
+
           <button
-            onClick={() => { setSubmitted(false); setAnswers({}); setErrors({}); }}
+            onClick={() => { setSubmitted(false); setAnswers({}); setErrors({}); setQuizResult(null); }}
             className="px-5 py-2.5 text-sm font-medium text-zinc-700 bg-white border border-zinc-200 rounded-lg hover:bg-zinc-50 transition-colors"
           >
             Submit another response

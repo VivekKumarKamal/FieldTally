@@ -86,12 +86,24 @@ export const inlineQuestionEnterShortcut = (editor: TiptapEditor, nodeName: stri
   return true;
 };
 
+export const QuizAnswerBadge = () => (
+  <Tooltip content={<span className="text-emerald-300">Answer <span className="text-white font-bold ml-0.5">set</span></span>}>
+    <span
+      className="quiz-answer-badge"
+      contentEditable={false}
+    >
+      ✓
+    </span>
+  </Tooltip>
+);
+
 export function createSimpleAnswerBlock(config: SimpleAnswerBlockConfig) {
   const Component = (props: NodeViewProps) => (
     <NodeViewWrapper className={config.className} data-required={(props.node.attrs as RequiredAttrs).required ? "true" : undefined}>
       <div className="question-title-row">
         <NodeViewContent as="div" className={`${config.titleClassName} outline-none`} />
         {(props.node.attrs as RequiredAttrs).required && <RequiredBadge updateAttributes={props.updateAttributes} />}
+        {props.node.attrs.correctAnswer != null && <QuizAnswerBadge />}
       </div>
       {(config.renderField || PlaceholderInput)(props)}
     </NodeViewWrapper>

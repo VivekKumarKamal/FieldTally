@@ -45,6 +45,79 @@ const ID_BLOCK_TYPES = [
   "signatureAnswerBlock",
 ];
 
+const QUIZ_BLOCK_TYPES = [
+  "multipleChoiceBlock",
+  "checkboxBlock",
+  "numberAnswerBlock",
+];
+
+export const QuizAttribute = Extension.create({
+  name: "quizAttribute",
+  addGlobalAttributes() {
+    return [
+      {
+        types: QUIZ_BLOCK_TYPES,
+        attributes: {
+          correctAnswer: {
+            default: null,
+            renderHTML: attributes => {
+              if (attributes.correctAnswer == null) return {};
+              return { "data-correct-answer": JSON.stringify(attributes.correctAnswer) };
+            },
+            parseHTML: element => {
+              const raw = element.getAttribute("data-correct-answer");
+              if (!raw) return null;
+              try { return JSON.parse(raw); } catch { return null; }
+            },
+          },
+          quizPoints: {
+            default: 1,
+            renderHTML: attributes => {
+              if (attributes.quizPoints === 1) return {};
+              return { "data-quiz-points": String(attributes.quizPoints) };
+            },
+            parseHTML: element => {
+              const raw = element.getAttribute("data-quiz-points");
+              return raw ? Number(raw) : 1;
+            },
+          },
+        },
+      },
+    ];
+  },
+});
+
+export const DocumentAttributes = Extension.create({
+  name: "documentAttributes",
+  addGlobalAttributes() {
+    return [
+      {
+        types: ["doc"],
+        attributes: {
+          quizMode: {
+            default: false,
+            renderHTML: attributes => {
+              return {
+                "data-quiz-mode": attributes.quizMode ? "true" : "false",
+              };
+            },
+            parseHTML: element => element.getAttribute("data-quiz-mode") === "true",
+          },
+          showResultsImmediately: {
+            default: true,
+            renderHTML: attributes => {
+              return {
+                "data-show-results-immediately": attributes.showResultsImmediately ? "true" : "false",
+              };
+            },
+            parseHTML: element => element.getAttribute("data-show-results-immediately") !== "false",
+          },
+        },
+      },
+    ];
+  },
+});
+
 export const RequiredAttribute = Extension.create({
   name: "requiredAttribute",
   addGlobalAttributes() {
@@ -280,6 +353,8 @@ export const defaultExtensions = [
   ImageAnswerBlock,
   SignatureAnswerBlock,
   RequiredAttribute,
+  QuizAttribute,
+  DocumentAttributes,
   dragHandle,
   starterKit,
   placeholder,

@@ -155,20 +155,31 @@ function exportCSV(
   columns: QuestionColumn[],
   submissions: Submission[],
   formTitle: string,
-  version: number
+  version: number,
+  isQuizMode?: boolean
 ) {
-  const headers = ["#", "Submitted At", ...columns.map((c) => c.label)];
-  const rows = submissions.map((s, i) => [
-    String(i + 1),
-    formatDateTime(s.filled_at),
-    ...columns.map((c) => {
+  const headers = ["#", "Submitted At"];
+  if (isQuizMode) headers.push("Score");
+  headers.push(...columns.map((c) => c.label));
+
+  const rows = submissions.map((s, i) => {
+    const row = [
+      String(i + 1),
+      formatDateTime(s.filled_at),
+    ];
+    if (isQuizMode) {
+      const result = s.data.__quiz_result;
+      row.push(result ? `${result.score}/${result.totalPoints} (${result.percentage}%)` : "—");
+    }
+    row.push(...columns.map((c) => {
       const val = s.data[c.id];
       if (typeof val === "string" && val.startsWith("http")) {
         return val;
       }
       return formatCellValue(val);
-    }),
-  ]);
+    }));
+    return row;
+  });
   const csv = [headers.map(escapeCSV).join(","), ...rows.map((r) => r.map(escapeCSV).join(","))].join("\n");
   downloadFile(`${formTitle}_v${version}_submissions.csv`, csv, "text/csv;charset=utf-8;");
 }
@@ -177,13 +188,19 @@ function exportJSON(
   columns: QuestionColumn[],
   submissions: Submission[],
   formTitle: string,
-  version: number
+  version: number,
+  isQuizMode?: boolean
 ) {
   const data = submissions.map((s, i) => {
     const row: Record<string, any> = {
       "#": i + 1,
       "Submitted At": formatDateTime(s.filled_at),
     };
+    if (isQuizMode) {
+      const result = s.data.__quiz_result;
+      row["Score"] = result ? `${result.score}/${result.totalPoints}` : "—";
+      row["Score Percentage"] = result ? `${result.percentage}%` : "—";
+    }
     for (const col of columns) {
       row[col.label] = s.data[col.id] ?? null;
     }
@@ -215,7 +232,8 @@ async function exportExcel(
   columns: QuestionColumn[],
   submissions: Submission[],
   formTitle: string,
-  version: number
+  version: number,
+  isQuizMode?: boolean
 ) {
   try {
     const ExcelJS = await loadExcelJS();
@@ -226,12 +244,17 @@ async function exportExcel(
     const worksheetColumns = [
       { header: "#", key: "index", width: 8 },
       { header: "Submitted At", key: "filled_at", width: 22 },
+    ];
+    if (isQuizMode) {
+      worksheetColumns.push({ header: "Score", key: "score", width: 15 });
+    }
+    worksheetColumns.push(
       ...columns.map((c) => ({
         header: c.label,
         key: c.id,
         width: c.type === "imageAnswerBlock" || c.type === "signatureAnswerBlock" ? 25 : 20
       }))
-    ];
+    );
     worksheet.columns = worksheetColumns;
 
     // Apply header styling
@@ -260,10 +283,19 @@ async function exportExcel(
       row.getCell(2).value = formatDateTime(s.filled_at);
       row.getCell(2).alignment = { vertical: "middle", horizontal: "left" };
 
+      let colOffset = 3;
+      if (isQuizMode) {
+        const result = s.data.__quiz_result;
+        const cell = row.getCell(3);
+        cell.value = result ? `${result.score}/${result.totalPoints} (${result.percentage}%)` : "—";
+        cell.alignment = { vertical: "middle", horizontal: "center" };
+        colOffset = 4;
+      }
+
       // Write questions
       for (let j = 0; j < columns.length; j++) {
         const c = columns[j];
-        const colIndex = j + 3; // index (1), submitted_at (2), columns start at 3
+        const colIndex = j + colOffset; // index (1), submitted_at (2), score? (3), columns start after
         const val = s.data[c.id];
         const cell = row.getCell(colIndex);
         cell.alignment = { vertical: "middle", horizontal: "left" };
@@ -978,7 +1010,7 @@ function SubmissionsContent() {
                   <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-zinc-200 rounded-xl shadow-xl z-50 py-1 animate-in fade-in slide-in-from-top-1 duration-150">
                     <button
                       onClick={() => {
-                        exportExcel(columns, filteredSubmissions, formTitle, selectedVersion!);
+                        exportExcel(columns, filteredSubmissions, formTitle, selectedVersion!, activeVersion?.content?.attrs?.quizMode === true);
                         setExportOpen(false);
                       }}
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-zinc-700 hover:bg-zinc-50 transition-colors"
@@ -991,7 +1023,7 @@ function SubmissionsContent() {
                     </button>
                     <button
                       onClick={() => {
-                        exportCSV(columns, filteredSubmissions, formTitle, selectedVersion!);
+                        exportCSV(columns, filteredSubmissions, formTitle, selectedVersion!, activeVersion?.content?.attrs?.quizMode === true);
                         setExportOpen(false);
                       }}
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-zinc-700 hover:bg-zinc-50 transition-colors"
@@ -1004,7 +1036,7 @@ function SubmissionsContent() {
                     </button>
                     <button
                       onClick={() => {
-                        exportJSON(columns, filteredSubmissions, formTitle, selectedVersion!);
+                        exportJSON(columns, filteredSubmissions, formTitle, selectedVersion!, activeVersion?.content?.attrs?.quizMode === true);
                         setExportOpen(false);
                       }}
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-zinc-700 hover:bg-zinc-50 transition-colors"
@@ -1124,6 +1156,11 @@ function SubmissionsContent() {
                         <th className="text-left px-4 py-3 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider bg-zinc-50/80 whitespace-nowrap min-w-[160px]">
                           Submitted At
                         </th>
+                        {activeVersion?.content?.attrs?.quizMode === true && (
+                          <th className="text-left px-4 py-3 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider bg-zinc-50/80 whitespace-nowrap min-w-[120px]">
+                            Score
+                          </th>
+                        )}
                         {columns.map((col) => (
                           <th
                             key={col.id}
@@ -1149,6 +1186,25 @@ function SubmissionsContent() {
                           <td className="px-4 py-3 text-zinc-500 whitespace-nowrap">
                             {formatDateTime(sub.filled_at)}
                           </td>
+                          {activeVersion?.content?.attrs?.quizMode === true && (() => {
+                            const result = sub.data.__quiz_result;
+                            if (!result) return <td className="px-4 py-3 text-zinc-400">—</td>;
+                            
+                            let badgeCls = "bg-red-50 text-red-700 border-red-100";
+                            if (result.percentage >= 80) {
+                              badgeCls = "bg-emerald-50 text-emerald-700 border-emerald-100";
+                            } else if (result.percentage >= 50) {
+                              badgeCls = "bg-amber-50 text-amber-700 border-amber-100";
+                            }
+
+                            return (
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${badgeCls}`}>
+                                  {result.score}/{result.totalPoints} ({result.percentage}%)
+                                </span>
+                              </td>
+                            );
+                          })()}
                           {columns.map((col) => {
                             const val = sub.data[col.id];
                             const isGps = col.type === "gpsAnswerBlock" && val && val.latitude != null && val.longitude != null;
