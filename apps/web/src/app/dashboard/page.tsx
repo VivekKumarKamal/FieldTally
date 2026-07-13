@@ -366,7 +366,7 @@ export default function Dashboard() {
                   key={form.id}
                   className={`group bg-white border border-zinc-200/80 rounded-xl p-4 hover:border-zinc-300 hover:shadow-sm transition-all ${isDeleting ? "opacity-50 pointer-events-none" : ""}`}
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${isPublished ? "bg-emerald-50" : "bg-zinc-100"}`}>
                         {isPublished ? (
@@ -389,7 +389,7 @@ export default function Dashboard() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex-wrap pl-12 md:pl-0">
                       <button
                         onClick={() => handleEditForm(form.id)}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 rounded-lg transition-colors"
@@ -447,7 +447,7 @@ export default function Dashboard() {
                     key={form.id}
                     className="group bg-white border border-zinc-200/80 rounded-xl p-4 hover:border-zinc-300 hover:shadow-sm transition-all"
                   >
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${isPublished ? "bg-blue-50" : "bg-zinc-100"}`}>
                           {isPublished ? (
@@ -470,7 +470,7 @@ export default function Dashboard() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex-wrap pl-12 md:pl-0">
                         {isPublished ? (
                           <Link
                             href={`/s/${form.id}`}
@@ -481,7 +481,7 @@ export default function Dashboard() {
                             View Form
                           </Link>
                         ) : (
-                          <span className="text-xs text-zinc-400 font-medium px-3 py-1.5 select-none">
+                          <span className="text-xs text-zinc-400 font-medium px-3 py-1.5 select-none pl-12 md:pl-0">
                             Not published yet
                           </span>
                         )}

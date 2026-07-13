@@ -250,7 +250,25 @@ export default function Home() {
         {/* Soft radial glow from top */}
         <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[640px] h-64 bg-gradient-to-b from-violet-100/60 to-blue-500 rounded-full blur-3xl -z-10 pointer-events-none" />
 
-        <div className="max-w-full h-[65vh] text-center flex flex-col items-center justify-center">
+        {/* Background Animations */}
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="absolute left-[-15%] top-[10%] w-[300px] sm:w-[450px] z-0 pointer-events-none mix-blend-multiply opacity-25 -rotate-12 select-none"
+          src="/assets/infinity-black.mp4"
+        />
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="absolute right-[-15%] top-[25%] w-[300px] sm:w-[450px] z-0 pointer-events-none mix-blend-multiply opacity-50 rotate-45 select-none"
+          src="/assets/infinity-white.mp4"
+        />
+
+        <div className="relative z-10 max-w-full h-[65vh] text-center flex flex-col items-center justify-center">
 
           {/* Headline */}
           <h1 className="text-[2.75rem] sm:text-5xl font-bold text-zinc-950 tracking-tight leading-[1.1] mb-5">
@@ -597,7 +615,17 @@ export default function Home() {
         <div className="absolute top-0 left-1/4 w-[400px] h-[400px] bg-blue-500/5 rounded-full blur-[120px] pointer-events-none" />
         <div className="absolute bottom-0 right-1/4 w-[400px] h-[400px] bg-violet-500/5 rounded-full blur-[120px] pointer-events-none" />
 
-        <div className="max-w-5xl mx-auto px-8">
+        {/* Background Animation */}
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="absolute left-[-10%] top-[10%] w-[350px] sm:w-[450px] z-0 pointer-events-none mix-blend-multiply opacity-45 rotate-90 select-none"
+          src="/assets/infinity-white.mp4"
+        />
+
+        <div className="relative z-10 max-w-5xl mx-auto px-8">
           <div className="flex flex-col lg:flex-row items-center gap-16">
             
             {/* Left Column: Visual AI Agent Chat Mockup */}
@@ -702,7 +730,17 @@ export default function Home() {
         />
         <div className="absolute top-1/2 right-1/4 w-[350px] h-[350px] bg-indigo-500/5 rounded-full blur-[100px] pointer-events-none" />
 
-        <div className="max-w-5xl mx-auto px-8">
+        {/* Background Animation */}
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="absolute right-[-10%] top-[20%] w-[350px] sm:w-[450px] z-0 pointer-events-none mix-blend-multiply opacity-20 -rotate-90 select-none"
+          src="/assets/infinity-black.mp4"
+        />
+
+        <div className="relative z-10 max-w-5xl mx-auto px-8">
           <div className="flex flex-col lg:flex-row-reverse items-center gap-16">
             
             {/* Right Column: Visual Dashboard Mockup */}
@@ -905,6 +943,16 @@ export default function Home() {
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-72 bg-violet-500/8 blur-[100px] rounded-full" />
         </div>
+
+        {/* Background Animation (Inverted & Screen blended for dark background) */}
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="absolute right-[-10%] bottom-[-10%] w-[300px] sm:w-[480px] z-0 pointer-events-none mix-blend-screen opacity-20 -rotate-45 invert select-none"
+          src="/assets/infinity-black.mp4"
+        />
         <div className="max-w-3xl mx-auto px-8 text-center relative z-10">
           <p className="text-[11px] font-semibold text-zinc-500 uppercase tracking-widest mb-6">Get started</p>
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-5 leading-snug">
