@@ -171,7 +171,7 @@ function SubmissionPageContent() {
           }
         }
 
-        const isQuiz = targetVersionData.content?.attrs?.quizMode === true;
+        const isQuiz = (targetVersionData.content as any)?.attrs?.quizMode === true;
         if (isQuiz) {
           const localCheck = localStorage.getItem(`quiz_submitted_${formId}`);
           if (localCheck) {
@@ -245,7 +245,7 @@ function SubmissionPageContent() {
 
       if (error) throw error;
 
-      const isQuiz = formSchema?.attrs?.quizMode === true;
+      const isQuiz = (formSchema as any)?.attrs?.quizMode === true;
       if (isQuiz) {
         localStorage.setItem(`quiz_submitted_${formId}`, "true");
       }
@@ -331,8 +331,8 @@ function SubmissionPageContent() {
   }
 
   if (submitted) {
-    const isQuiz = formSchema?.attrs?.quizMode === true;
-    const showImmediate = formSchema?.attrs?.showResultsImmediately !== false;
+    const isQuiz = (formSchema as any)?.attrs?.quizMode === true;
+    const showImmediate = (formSchema as any)?.attrs?.showResultsImmediately !== false;
 
     return (
       <div className="min-h-screen flex items-center justify-center bg-zinc-50 relative pb-16">
