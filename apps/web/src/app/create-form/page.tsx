@@ -1203,7 +1203,7 @@ function FormEditorContent() {
                     <div className="h-px bg-zinc-100 my-1 mx-2" />
 
                     {/* Quiz Answer Configuration */}
-                    {activeNodePos !== null && editorRef.current && QUIZ_BLOCK_TYPES.has(editorRef.current.state.doc.nodeAt(activeNodePos)?.type.name || "") && (() => {
+                    {quizMode && activeNodePos !== null && editorRef.current && QUIZ_BLOCK_TYPES.has(editorRef.current.state.doc.nodeAt(activeNodePos)?.type.name || "") && (() => {
                       const updateQuizAttr = (key: string, value: any) => {
                         if (activeNodePos === null || !editorRef.current) return;
                         const node = editorRef.current.state.doc.nodeAt(activeNodePos);
@@ -1508,54 +1508,54 @@ function FormEditorContent() {
             />
           </div>
 
-
-
-          <EditorRoot>
-            {!isLoaded ? (
-              <div className="flex justify-center items-center py-20 text-sm text-zinc-500">Loading form...</div>
-            ) : (
-              <EditorContent
-                key={editorKey}
-                initialContent={editorInitialData}
-                extensions={extensions}
-                onCreate={({ editor }) => syncEditorSelection(editor)}
-                onSelectionUpdate={({ editor }) => syncEditorSelection(editor)}
-                editorProps={{
-                  handleKeyDown: (_, event) => {
-                    setIsKeyboardActive(true);
-                    return handleCommandNavigation(event);
-                  }
-                }}
-                onUpdate={({ editor }) => handleEditorUpdate(editor)}
-                immediatelyRender={false}
-              >
-                <EditorCommand className="z-50 h-auto min-w-[300px] max-h-[340px] overflow-y-auto px-1 gap-2 border-1 border-zinc-200 rounded-lg bg-white shadow-lg">
-                  <EditorCommandEmpty className="px-3 py-1 text-sm text-zinc-500">
-                    No results found
-                  </EditorCommandEmpty>
-                  <EditorCommandList>
-                    {suggestionItems.map((item: SuggestionItem) => (
-                      <EditorCommandItem
-                        key={item.title}
-                        value={item.title}
-                        onCommand={item.command!}
-                        className="flex cursor-pointer my-1.5 gap-3 rounded-lg px-3 py-2 text-sm text-zinc-700 border border-zinc-200 hover:bg-zinc-100 aria-selected:bg-zinc-100 aria-selected:border-zinc-400"
-                      >
-                        <div className="flex h-6 w-8 items-center justify-center rounded-md border border-gray-300">
-                          {item.icon}
-                        </div>
-                        <div>
-                          <p className="font-medium leading-none">{item.title}</p>
-                          <p className="mt-0.5 text-xs text-zinc-500">{item.description}</p>
-                        </div>
-                      </EditorCommandItem>
-                    ))}
-                  </EditorCommandList>
-                </EditorCommand>
-                <EditorBubble
-                  tippyOptions={{ placement: "top" }}
-                  className="flex w-fit max-w-[90vw] overflow-hidden rounded-md border border-zinc-200 bg-white shadow-xl z-50"
+          <div className={quizMode ? "quiz-mode-active" : ""}>
+            <EditorRoot>
+              {!isLoaded ? (
+                <div className="flex justify-center items-center py-20 text-sm text-zinc-500">Loading form...</div>
+              ) : (
+                <EditorContent
+                  key={editorKey}
+                  initialContent={editorInitialData}
+                  extensions={extensions}
+                  onCreate={({ editor }) => syncEditorSelection(editor)}
+                  onSelectionUpdate={({ editor }) => syncEditorSelection(editor)}
+                  editorProps={{
+                    handleKeyDown: (_, event) => {
+                      setIsKeyboardActive(true);
+                      return handleCommandNavigation(event);
+                    }
+                  }}
+                  onUpdate={({ editor }) => handleEditorUpdate(editor)}
+                  immediatelyRender={false}
                 >
+                  <EditorCommand className="z-50 h-auto min-w-[300px] max-h-[340px] overflow-y-auto px-1 gap-2 border-1 border-zinc-200 rounded-lg bg-white shadow-lg">
+                    <EditorCommandEmpty className="px-3 py-1 text-sm text-zinc-500">
+                      No results found
+                    </EditorCommandEmpty>
+                    <EditorCommandList>
+                      {suggestionItems.map((item: SuggestionItem) => (
+                        <EditorCommandItem
+                          key={item.title}
+                          value={item.title}
+                          onCommand={(val) => item.searchTerms.some(term => val.toLowerCase().includes(term.toLowerCase())) && item.command?.(editorRef.current!)}
+                          className="flex cursor-pointer my-1.5 gap-3 rounded-lg px-3 py-2 text-sm text-zinc-700 border border-zinc-200 hover:bg-zinc-100 aria-selected:bg-zinc-100 aria-selected:border-zinc-400"
+                        >
+                          <div className="flex h-6 w-8 items-center justify-center rounded-md border border-gray-300">
+                            {item.icon}
+                          </div>
+                          <div>
+                            <p className="font-medium leading-none">{item.title}</p>
+                            <p className="mt-0.5 text-xs text-zinc-500">{item.description}</p>
+                          </div>
+                        </EditorCommandItem>
+                      ))}
+                    </EditorCommandList>
+                  </EditorCommand>
+                  
+                  <EditorBubble
+                    tippyOptions={{ placement: "top" }}
+                    className="flex w-fit max-w-[90vw] overflow-hidden rounded-md border border-zinc-200 bg-white shadow-xl z-50"
+                  >
                   <EditorBubbleItem
                     className="flex h-9 w-9 items-center justify-center text-zinc-600 hover:bg-zinc-100 cursor-pointer data-[active=true]:text-blue-500 data-[active=true]:bg-blue-50"
                     onSelect={(editor) => {
@@ -1607,6 +1607,7 @@ function FormEditorContent() {
               </EditorContent>
             )}
           </EditorRoot>
+        </div>
 
           {/* Light-themed Template Selection Boxes (positioned below the first line, always mounted for smooth transition) */}
           <div

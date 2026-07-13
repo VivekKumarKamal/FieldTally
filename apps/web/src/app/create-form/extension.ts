@@ -9,7 +9,7 @@ import {
   GlobalDragHandle,
 } from "novel";
 
-import { Extension } from "@tiptap/core";
+import { Extension, Node } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import Underline from "@tiptap/extension-underline";
 import { cx } from "class-variance-authority";
@@ -87,34 +87,31 @@ export const QuizAttribute = Extension.create({
   },
 });
 
-export const DocumentAttributes = Extension.create({
-  name: "documentAttributes",
-  addGlobalAttributes() {
-    return [
-      {
-        types: ["doc"],
-        attributes: {
-          quizMode: {
-            default: false,
-            renderHTML: attributes => {
-              return {
-                "data-quiz-mode": attributes.quizMode ? "true" : "false",
-              };
-            },
-            parseHTML: element => element.getAttribute("data-quiz-mode") === "true",
-          },
-          showResultsImmediately: {
-            default: true,
-            renderHTML: attributes => {
-              return {
-                "data-show-results-immediately": attributes.showResultsImmediately ? "true" : "false",
-              };
-            },
-            parseHTML: element => element.getAttribute("data-show-results-immediately") !== "false",
-          },
+export const CustomDocument = Node.create({
+  name: "doc",
+  topNode: true,
+  content: "block+",
+  addAttributes() {
+    return {
+      quizMode: {
+        default: false,
+        renderHTML: attributes => {
+          return {
+            "data-quiz-mode": attributes.quizMode ? "true" : "false",
+          };
         },
+        parseHTML: element => element.getAttribute("data-quiz-mode") === "true",
       },
-    ];
+      showResultsImmediately: {
+        default: true,
+        renderHTML: attributes => {
+          return {
+            "data-show-results-immediately": attributes.showResultsImmediately ? "true" : "false",
+          };
+        },
+        parseHTML: element => element.getAttribute("data-show-results-immediately") !== "false",
+      },
+    };
   },
 });
 
@@ -239,6 +236,7 @@ const horizontalRule = HorizontalRule.configure({
 });
 
 const starterKit = StarterKit.configure({
+  document: false,
   bulletList: {
     HTMLAttributes: {
       class: cx("list-disc list-outside leading-3 -mt-2"),
@@ -354,7 +352,7 @@ export const defaultExtensions = [
   SignatureAnswerBlock,
   RequiredAttribute,
   QuizAttribute,
-  DocumentAttributes,
+  CustomDocument,
   dragHandle,
   starterKit,
   placeholder,

@@ -526,8 +526,8 @@ body {
 }
 
 /* Quiz answer indicator for ProseMirror checkbox/MCQ blocks (::before on title) */
-.tiptap:not(.form-renderer) [data-correct-answer] div[data-type="checkbox-title"]::before,
-.tiptap:not(.form-renderer) [data-correct-answer] div[data-type="multiple-choice-title"]::before {
+.quiz-mode-active .tiptap:not(.form-renderer) [data-correct-answer] div[data-type="checkbox-title"]::before,
+.quiz-mode-active .tiptap:not(.form-renderer) [data-correct-answer] div[data-type="multiple-choice-title"]::before {
   content: "✓";
   display: inline-flex;
   align-items: center;
