@@ -202,6 +202,34 @@ export const CheckboxBlock = Node.create({
   defining: true,
   draggable: true,
 
+  addAttributes() {
+    return {
+      correctAnswer: {
+        default: null,
+        renderHTML: attributes => {
+          if (attributes.correctAnswer == null) return {};
+          return { "data-correct-answer": JSON.stringify(attributes.correctAnswer) };
+        },
+        parseHTML: element => {
+          const raw = element.getAttribute("data-correct-answer");
+          if (!raw) return null;
+          try { return JSON.parse(raw); } catch { return null; }
+        },
+      },
+      quizPoints: {
+        default: 1,
+        renderHTML: attributes => {
+          if (attributes.quizPoints === 1) return {};
+          return { "data-quiz-points": String(attributes.quizPoints) };
+        },
+        parseHTML: element => {
+          const raw = element.getAttribute("data-quiz-points");
+          return raw ? Number(raw) : 1;
+        },
+      },
+    };
+  },
+
   parseHTML() {
     return [{ tag: 'div[data-type="checkbox-block"]' }];
   },

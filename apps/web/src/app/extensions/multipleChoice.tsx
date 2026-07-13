@@ -202,6 +202,30 @@ export const MultipleChoiceBlock = Node.create({
   defining: true,
   draggable: true,
 
+  addAttributes() {
+    return {
+      correctAnswer: {
+        default: null,
+        renderHTML: attributes => {
+          if (attributes.correctAnswer == null) return {};
+          return { "data-correct-answer": attributes.correctAnswer };
+        },
+        parseHTML: element => element.getAttribute("data-correct-answer"),
+      },
+      quizPoints: {
+        default: 1,
+        renderHTML: attributes => {
+          if (attributes.quizPoints === 1) return {};
+          return { "data-quiz-points": String(attributes.quizPoints) };
+        },
+        parseHTML: element => {
+          const raw = element.getAttribute("data-quiz-points");
+          return raw ? Number(raw) : 1;
+        },
+      },
+    };
+  },
+
   parseHTML() {
     return [{ tag: 'div[data-type="multiple-choice-block"]' }];
   },

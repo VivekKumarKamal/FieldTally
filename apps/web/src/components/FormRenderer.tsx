@@ -430,26 +430,38 @@ export default function FormRenderer({ schema, title, progressBarOffset, onSubmi
             <CheckCircle2 size={32} className="text-emerald-600" />
           </div>
           <h2 className="text-2xl font-bold text-zinc-800 mb-2">Response submitted!</h2>
-          <p className="text-zinc-500 mb-6">Your response has been recorded successfully.</p>
           
-          {isQuiz && showImmediate && quizResult && (
-            <div className="mb-8 p-6 bg-zinc-50 border border-zinc-200/80 rounded-2xl flex flex-col gap-2 items-center justify-center">
-              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Your Score</span>
-              <span className="text-3xl font-extrabold text-zinc-800 leading-none">
-                {quizResult.score} / {quizResult.totalPoints}
-              </span>
-              <span className="text-xs font-semibold text-emerald-600">
-                ({quizResult.percentage}% Correct)
-              </span>
-            </div>
+          {isQuiz ? (
+            showImmediate && quizResult ? (
+              <>
+                <p className="text-zinc-500 mb-6">Your response has been recorded successfully.</p>
+                <div className="mb-8 p-6 bg-zinc-50 border border-zinc-200/80 rounded-2xl flex flex-col gap-2 items-center justify-center">
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Your Score</span>
+                  <span className="text-3xl font-extrabold text-zinc-800 leading-none">
+                    {quizResult.score} / {quizResult.totalPoints}
+                  </span>
+                  <span className="text-xs font-semibold text-emerald-600">
+                    ({quizResult.percentage}% Correct)
+                  </span>
+                </div>
+              </>
+            ) : (
+              <p className="text-zinc-500 mb-8 text-base">
+                You have submitted your response. Your mentor will check it and give the marks.
+              </p>
+            )
+          ) : (
+            <p className="text-zinc-500 mb-8">Your response has been recorded successfully.</p>
           )}
 
-          <button
-            onClick={() => { setSubmitted(false); setAnswers({}); setErrors({}); setQuizResult(null); }}
-            className="px-5 py-2.5 text-sm font-medium text-zinc-700 bg-white border border-zinc-200 rounded-lg hover:bg-zinc-50 transition-colors"
-          >
-            Submit another response
-          </button>
+          {!isQuiz && (
+            <button
+              onClick={() => { setSubmitted(false); setAnswers({}); setErrors({}); setQuizResult(null); }}
+              className="px-5 py-2.5 text-sm font-medium text-zinc-700 bg-white border border-zinc-200 rounded-lg hover:bg-zinc-50 transition-colors"
+            >
+              Submit another response
+            </button>
+          )}
         </div>
       </div>
     );

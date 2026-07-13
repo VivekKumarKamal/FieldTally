@@ -5,7 +5,7 @@ import { useRouter, useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
 import FormRenderer from "../../../components/FormRenderer";
-import { FileDown, Copy, Check } from "lucide-react";
+import { FileDown, Copy, Check, Trophy } from "lucide-react";
 
 function PoweredByBadge() {
   return (
@@ -36,6 +36,7 @@ function SubmissionPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [quizResult, setQuizResult] = useState<any>(null);
   const [isLatestVersion, setIsLatestVersion] = useState(true);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [copiedUrl, setCopiedUrl] = useState(false);
@@ -170,6 +171,31 @@ function SubmissionPageContent() {
           }
         }
 
+        const isQuiz = targetVersionData.content?.attrs?.quizMode === true;
+        if (isQuiz) {
+          const localCheck = localStorage.getItem(`quiz_submitted_${formId}`);
+          if (localCheck) {
+            setError("already_submitted");
+            setLoading(false);
+            return;
+          }
+
+          if (user) {
+            const { data: existingSubmissions } = await supabase
+              .from('submissions')
+              .select('id')
+              .eq('form_id', formId)
+              .eq('submitted_by', user.id)
+              .limit(1);
+
+            if (existingSubmissions && existingSubmissions.length > 0) {
+              setError("already_submitted");
+              setLoading(false);
+              return;
+            }
+          }
+        }
+
         setFormVersionId(targetVersionData.id);
         setFormSchema(targetVersionData.content);
         setFormTitle(targetVersionData.title);
@@ -189,6 +215,10 @@ function SubmissionPageContent() {
     if (userRole === 'viewer') {
       alert("Viewers are not permitted to submit responses.");
       return;
+    }
+
+    if (answers.__quiz_result) {
+      setQuizResult(answers.__quiz_result);
     }
 
     if (formId === "preview") {
@@ -214,6 +244,12 @@ function SubmissionPageContent() {
       });
 
       if (error) throw error;
+
+      const isQuiz = formSchema?.attrs?.quizMode === true;
+      if (isQuiz) {
+        localStorage.setItem(`quiz_submitted_${formId}`, "true");
+      }
+
       setSubmitted(true);
     } catch (err: any) {
       console.error("Submission failed:", err);
@@ -249,6 +285,24 @@ function SubmissionPageContent() {
     );
   }
 
+  if (error === "already_submitted") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 relative pb-16">
+        <div className="bg-white p-8 rounded-2xl shadow-sm border border-zinc-200 text-center max-w-md w-full mx-4">
+          <div className="w-12 h-12 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Trophy className="w-6 h-6 text-amber-600" />
+          </div>
+          <h2 className="text-xl font-semibold text-zinc-900 mb-2">Quiz Already Submitted</h2>
+          <p className="text-zinc-600 mb-6 text-sm">You have already completed this quiz. Multiple attempts are not permitted.</p>
+          <Link href="/dashboard" className="inline-flex justify-center w-full px-4 py-2 text-sm font-medium text-white bg-zinc-900 rounded-lg hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-500">
+            Back to Dashboard
+          </Link>
+        </div>
+        <PoweredByBadge />
+      </div>
+    );
+  }
+
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-zinc-50 relative pb-16">
@@ -277,22 +331,50 @@ function SubmissionPageContent() {
   }
 
   if (submitted) {
+    const isQuiz = formSchema?.attrs?.quizMode === true;
+    const showImmediate = formSchema?.attrs?.showResultsImmediately !== false;
+
     return (
       <div className="min-h-screen flex items-center justify-center bg-zinc-50 relative pb-16">
-        <div className="bg-white p-10 rounded-2xl shadow-sm border border-zinc-200 text-center max-w-md animate-in fade-in zoom-in duration-500">
+        <div className="bg-white p-10 rounded-2xl shadow-sm border border-zinc-200 text-center max-w-md animate-in fade-in zoom-in duration-500 w-full mx-4">
           <div className="w-16 h-16 bg-green-50 text-green-500 rounded-full flex items-center justify-center mx-auto mb-6">
             <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
             </svg>
           </div>
           <h2 className="text-2xl font-bold text-zinc-900 mb-3">Response Submitted!</h2>
-          <p className="text-zinc-600 mb-8 text-lg">Thank you for completing this form.</p>
-          <button 
-            onClick={() => setSubmitted(false)}
-            className="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors"
-          >
-            Submit another response
-          </button>
+          
+          {isQuiz ? (
+            showImmediate && quizResult ? (
+              <>
+                <p className="text-zinc-600 mb-6">Your response has been recorded successfully.</p>
+                <div className="mb-6 p-6 bg-zinc-50 border border-zinc-200/80 rounded-2xl flex flex-col gap-2 items-center justify-center">
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Your Score</span>
+                  <span className="text-3xl font-extrabold text-zinc-800 leading-none">
+                    {quizResult.score} / {quizResult.totalPoints}
+                  </span>
+                  <span className="text-xs font-semibold text-emerald-600">
+                    ({quizResult.percentage}% Correct)
+                  </span>
+                </div>
+              </>
+            ) : (
+              <p className="text-zinc-600 mb-8 text-base">
+                You have submitted your response. Your mentor will check it and give the marks.
+              </p>
+            )
+          ) : (
+            <p className="text-zinc-600 mb-8 text-lg">Thank you for completing this form.</p>
+          )}
+
+          {!isQuiz && (
+            <button 
+              onClick={() => setSubmitted(false)}
+              className="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors"
+            >
+              Submit another response
+            </button>
+          )}
         </div>
         <PoweredByBadge />
       </div>

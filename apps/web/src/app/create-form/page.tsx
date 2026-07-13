@@ -190,12 +190,7 @@ function FormEditorContent() {
   const updateDocAttr = (key: string, value: any) => {
     const editor = editorRef.current;
     if (!editor) return;
-    editor.view.dispatch(
-      editor.state.tr.setNodeMarkup(0, null, {
-        ...editor.state.doc.attrs,
-        [key]: value,
-      })
-    );
+    editor.commands.updateAttributes("doc", { [key]: value });
     if (key === "quizMode") setQuizMode(value);
     if (key === "showResultsImmediately") setShowResultsImmediately(value);
     saveForm(editor.getJSON());
