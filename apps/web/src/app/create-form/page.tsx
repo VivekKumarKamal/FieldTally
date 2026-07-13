@@ -1537,7 +1537,7 @@ function FormEditorContent() {
                         <EditorCommandItem
                           key={item.title}
                           value={item.title}
-                          onCommand={(val) => item.searchTerms.some(term => val.toLowerCase().includes(term.toLowerCase())) && item.command?.(editorRef.current!)}
+                          onCommand={item.command!}
                           className="flex cursor-pointer my-1.5 gap-3 rounded-lg px-3 py-2 text-sm text-zinc-700 border border-zinc-200 hover:bg-zinc-100 aria-selected:bg-zinc-100 aria-selected:border-zinc-400"
                         >
                           <div className="flex h-6 w-8 items-center justify-center rounded-md border border-gray-300">
