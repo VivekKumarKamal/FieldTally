@@ -161,7 +161,13 @@ function exportCSV(
   const rows = submissions.map((s, i) => [
     String(i + 1),
     formatDateTime(s.filled_at),
-    ...columns.map((c) => formatCellValue(s.data[c.id])),
+    ...columns.map((c) => {
+      const val = s.data[c.id];
+      if (typeof val === "string" && val.startsWith("http")) {
+        return val;
+      }
+      return formatCellValue(val);
+    }),
   ]);
   const csv = [headers.map(escapeCSV).join(","), ...rows.map((r) => r.map(escapeCSV).join(","))].join("\n");
   downloadFile(`${formTitle}_v${version}_submissions.csv`, csv, "text/csv;charset=utf-8;");
@@ -187,6 +193,24 @@ function exportJSON(
   downloadFile(`${formTitle}_v${version}_submissions.json`, json, "application/json");
 }
 
+function loadExcelJS(): Promise<any> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === "undefined") {
+      reject(new Error("window is undefined"));
+      return;
+    }
+    if ((window as any).ExcelJS) {
+      resolve((window as any).ExcelJS);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js";
+    script.onload = () => resolve((window as any).ExcelJS);
+    script.onerror = (err) => reject(err);
+    document.head.appendChild(script);
+  });
+}
+
 async function exportExcel(
   columns: QuestionColumn[],
   submissions: Submission[],
@@ -194,22 +218,123 @@ async function exportExcel(
   version: number
 ) {
   try {
-    const XLSX = await import("xlsx");
-    const headers = ["#", "Submitted At", ...columns.map((c) => c.label)];
-    const rows = submissions.map((s, i) => [
-      i + 1,
-      formatDateTime(s.filled_at),
-      ...columns.map((c) => formatCellValue(s.data[c.id])),
-    ]);
+    const ExcelJS = await loadExcelJS();
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Submissions");
 
-    const worksheetData = [headers, ...rows];
-    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Submissions");
+    // Configure headers and column widths
+    const worksheetColumns = [
+      { header: "#", key: "index", width: 8 },
+      { header: "Submitted At", key: "filled_at", width: 22 },
+      ...columns.map((c) => ({
+        header: c.label,
+        key: c.id,
+        width: c.type === "imageAnswerBlock" || c.type === "signatureAnswerBlock" ? 25 : 20
+      }))
+    ];
+    worksheet.columns = worksheetColumns;
 
-    XLSX.writeFile(workbook, `${formTitle}_v${version}_submissions.xlsx`);
+    // Apply header styling
+    const headerRow = worksheet.getRow(1);
+    headerRow.height = 28;
+    headerRow.eachCell((cell: any) => {
+      cell.font = { name: "Arial", size: 11, bold: true, color: { argb: "FFFFFF" } };
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "18181B" } // Tailwind zinc-900 (dark header)
+      };
+      cell.alignment = { vertical: "middle", horizontal: "center" };
+    });
+
+    // Populate rows
+    for (let i = 0; i < submissions.length; i++) {
+      const s = submissions[i];
+      const rowIndex = i + 2; // Excel is 1-indexed, header is row 1
+      const row = worksheet.getRow(rowIndex);
+      row.height = 24; // Default row height
+
+      // Write index and time
+      row.getCell(1).value = i + 1;
+      row.getCell(1).alignment = { vertical: "middle", horizontal: "center" };
+      row.getCell(2).value = formatDateTime(s.filled_at);
+      row.getCell(2).alignment = { vertical: "middle", horizontal: "left" };
+
+      // Write questions
+      for (let j = 0; j < columns.length; j++) {
+        const c = columns[j];
+        const colIndex = j + 3; // index (1), submitted_at (2), columns start at 3
+        const val = s.data[c.id];
+        const cell = row.getCell(colIndex);
+        cell.alignment = { vertical: "middle", horizontal: "left" };
+
+        const isImg = c.type === "imageAnswerBlock" || (typeof val === "string" && val.startsWith("http") && val.includes("fieldtally"));
+        const isSig = c.type === "signatureAnswerBlock" || (typeof val === "string" && val.startsWith("http") && val.includes("signature"));
+
+        if ((isImg || isSig) && typeof val === "string" && val.startsWith("http")) {
+          try {
+            // Increase row height to fit the embedded image preview
+            row.height = 80;
+
+            // Fetch the image
+            const res = await fetch(val);
+            if (!res.ok) throw new Error("Fetch failed");
+            const arrayBuffer = await res.arrayBuffer();
+
+            // Detect extension from URL or content-type
+            let ext = "png";
+            if (val.toLowerCase().includes(".jpg") || val.toLowerCase().includes(".jpeg")) {
+              ext = "jpeg";
+            } else if (val.toLowerCase().includes(".gif")) {
+              ext = "gif";
+            }
+
+            const imageId = workbook.addImage({
+              buffer: arrayBuffer,
+              extension: ext,
+            });
+
+            worksheet.addImage(imageId, {
+              tl: { col: colIndex - 1, row: rowIndex - 1 }, // ExcelJS coordinates are 0-indexed
+              ext: { width: 120, height: 70 },
+              editAs: "oneCell"
+            });
+
+            // Set link in cell as a fallback / double-click reference
+            cell.value = {
+              text: isSig ? "[Signature Image]" : "[Embedded Image]",
+              hyperlink: val,
+              tooltip: "Click to open original image"
+            };
+            cell.alignment = { vertical: "middle", horizontal: "center" };
+            cell.font = { color: { argb: "3B82F6" }, underline: true };
+          } catch (e) {
+            console.error("Failed to embed image, falling back to link:", e);
+            cell.value = {
+              text: isSig ? "View Signature" : "View Image",
+              hyperlink: val
+            };
+            cell.font = { color: { argb: "3B82F6" }, underline: true };
+            cell.alignment = { vertical: "middle", horizontal: "center" };
+          }
+        } else {
+          cell.value = formatCellValue(val);
+        }
+      }
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${formTitle}_v${version}_submissions.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   } catch (err) {
-    console.error("Failed to export to Excel:", err);
+    console.error("Failed to export to Excel with images:", err);
     alert("Failed to export to Excel. Please try again.");
   }
 }
