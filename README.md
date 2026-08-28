@@ -1,159 +1,84 @@
-# Turborepo starter
+# 📊 FieldTally
 
-This Turborepo starter is maintained by the Turborepo core team.
+> **Build Notion-style forms and collect data from anywhere — powered by AI.**
 
-## Using this example
+FieldTally is a **free and open-source** modern form builder and data collection platform. Designed with a Notion-style block editor and conversational AI capabilities, FieldTally enables users to quickly construct forms, apply dynamic branching logic, gather responses, and visualize analytics seamlessly.
 
-Run the following command:
+🌐 **Live Application:** [https://field-tally.vercel.app/](https://field-tally.vercel.app/)
 
-```sh
-npx create-turbo@latest
-```
+---
 
-## What's inside?
+## ✨ Features
 
-This Turborepo includes the following packages/apps:
+- 🆓 **Free & Open Source**: Openly accessible codebase for full transparency, customization, and self-hosting.
+- 🤖 **AI Assistant**: Build complex forms conversationally. Describe your form in plain language, and the AI drafts complete question schemas with validation and conditional logic rules in seconds.
+- 📝 **Notion-Style Block Editor**: Intuitive slash-command interface (`/`) to insert inputs, text, headings, checklists, file uploads, and structure your form blocks effortesly.
+- 🔀 **Conditional Branching Logic**: Show or hide specific questions based on previous answers using an visual, straightforward rule builder.
+- 📊 **Real-time Analytics & Dashboard**: Track submission trends, device breakdowns, and completion rates with automatic visual graphs and charts.
+- 🕒 **Version History**: Save and manage form publication versions. Compare, review, and restore previous form iterations easily.
+- 👥 **Role & Access Controls**: Invite team members and manage granular access roles (Owner, Editor, Viewer, Submitter).
+- 📄 **Export & PDF Reports**: Save response summaries directly to formatted PDF reports or export raw data into clean CSV files.
+- 🔗 **One-Click Sharing**: Share instant form links with respondents. No respondent registration or account creation required.
 
-### Apps and Packages
+---
 
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
+## 🛠️ Tech Stack & Architecture
 
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
+FieldTally is structured as a TypeScript monorepo powered by **Turborepo**:
 
-### Utilities
+- **Framework**: [Next.js](https://nextjs.org/) (App Router, React 19)
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/) & [Lucide Icons](https://lucide.dev/)
+- **Backend & Database**: [Supabase](https://supabase.com/) (Auth, PostgreSQL DB, Realtime)
+- **AI Integration**: [Google Gemini AI](https://deepmind.google/technologies/gemini/) / Bedrock API
+- **Monorepo Tooling**: [Turborepo](https://turborepo.org/)
 
-This Turborepo has some additional tools already setup for you:
+---
 
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
+## 🚀 Getting Started
 
-### Build
+### Prerequisites
 
-To build all apps and packages, run the following command:
+- **Node.js**: `>=18.x`
+- **npm** / **pnpm** / **yarn**
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+### Local Development Setup
 
-```sh
-cd my-turborepo
-turbo build
-```
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/your-username/FieldTally.git
+   cd FieldTally
+   ```
 
-Without global `turbo`, use your package manager:
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
 
-```sh
-cd my-turborepo
-npx turbo build
-npm dlx turbo build
-npm exec turbo build
-```
+3. **Configure Environment Variables:**
+   Create a `.env.local` file inside `apps/web/` with your Supabase and AI keys:
+   ```env
+   NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+   ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+4. **Run the development server:**
+   ```bash
+   npm run dev
+   ```
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+5. **Access the web app:**
+   Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-```sh
-turbo build --filter=docs
-```
+---
 
-Without global `turbo`:
+## 💻 Turborepo Commands
 
-```sh
-npx turbo build --filter=docs
-npm exec turbo build --filter=docs
-npm exec turbo build --filter=docs
-```
+- `npm run build` - Build all apps and packages
+- `npm run dev` - Run all applications in development mode
+- `npm run lint` - Lint all packages across the repository
 
-### Develop
+---
 
-To develop all apps and packages, run the following command:
+## 🤝 Contributing
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo dev
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo dev
-npm exec turbo dev
-npm exec turbo dev
-```
-
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo dev --filter=web
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo dev --filter=web
-npm exec turbo dev --filter=web
-npm exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-npm exec turbo login
-npm exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-npm exec turbo link
-npm exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+Contributions, issues, and feature requests are welcome! Feel free to check out the issues page or submit a pull request.
