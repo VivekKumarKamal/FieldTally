@@ -3,7 +3,7 @@ import { GoogleGenAI } from "@google/genai";
 async function runTest() {
     // It is best practice to pass it via environment variables (process.env.GEMINI_API_KEY),
     // but you can pass it explicitly here to test.
-    const apiKey = "AQ.Ab8RN6JEww5xx5n70S-tVOad8n9TWjy-j3C0MzIMsxFQYUNjKw"; 
+    const apiKey = ÀQQQQQQQQQQQQQQQQA"; 
     
     if (!apiKey) {
         console.error("Please provide a valid API key in the script.");
