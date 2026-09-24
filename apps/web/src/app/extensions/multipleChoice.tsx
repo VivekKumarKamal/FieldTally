@@ -53,6 +53,19 @@ export const MultipleChoiceTitle = Node.create({
         const cbDepth = findAncestorDepth($from, "multipleChoiceBlock");
         if (cbDepth === -1) return false;
 
+        // Caret at the very start of the question: push the whole block down and
+        // leave an empty paragraph above it, the way Enter behaves at the start of
+        // any other block. Without this the caret jumped into the options instead,
+        // so there was no way to add content above a question.
+        if (this.editor.state.selection.empty && $from.parentOffset === 0 && $from.parent.textContent !== "") {
+          const blockStart = $from.before(cbDepth);
+          this.editor.chain()
+            .insertContentAt(blockStart, { type: "paragraph" })
+            .setTextSelection(blockStart + 1)
+            .run();
+          return true;
+        }
+
         if ($from.parent.textContent.trim() === "") {
           // Empty title: remove the whole block and insert a plain paragraph in its place
           const start = $from.before(cbDepth);
