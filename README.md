@@ -82,4 +82,11 @@ FieldTally is structured as a TypeScript monorepo powered by **Turborepo**:
 ## 🤝 Contributing
 
 Contributions, issues, and feature requests are welcome! Feel free to check out the issues page or submit a pull request.
+<<<<<<< HEAD
 
+=======
+<<<<<<< HEAD
+=======
+
+>>>>>>> d1545ab (New Search_Options Block and ui-ux improvements)
+>>>>>>> 34b07fa (New Search_Options Block and ui-ux improvements)
