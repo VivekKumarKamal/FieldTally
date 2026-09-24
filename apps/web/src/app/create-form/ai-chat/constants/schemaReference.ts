@@ -23,6 +23,19 @@ LAYOUT NODES:
 - paragraph: { type, content: [{type:"text",text:"..."}] }
 - horizontalRule: { type: "horizontalRule" }
 
+QUIZ MODE (auto-graded assessments):
+- Turn the whole form into a quiz by setting document attrs:
+  { "type":"doc", "attrs": { "quizMode": true, "showResultsImmediately": true }, "content":[...] }
+  Use showResultsImmediately:false when the asker wants scores withheld from respondents.
+- Only three block types can be graded. Give each one an answer key:
+  - multipleChoiceBlock: attrs.correctAnswer is the EXACT text of the one correct option (a string).
+  - checkboxBlock: attrs.correctAnswer is an array of the EXACT texts of every correct option.
+  - numberAnswerBlock: attrs.correctAnswer is {"type":"exact","value":42}
+    or {"type":"range","min":10,"max":20} (inclusive).
+- attrs.quizPoints (positive number, default 1) sets that question's weight.
+- The correctAnswer text MUST match an option's text character for character, or it can never be marked correct.
+- Ungraded questions (short answer, date, GPS…) may still appear in a quiz; just omit correctAnswer.
+
 LOGIC:
 - logicBlock: { type:"logicBlock", attrs: { rule: { id, conditionOperator:"AND"|"OR", conditions:[{id,field,operator:"equals"|"notEquals"|"contains",value}], action:{type:"show"|"hide",targets:[fieldId,...]} } } }
 

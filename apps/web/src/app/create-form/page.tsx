@@ -1854,11 +1854,18 @@ function FormEditorContent() {
           currentFormTitle={formTitle}
           getCurrentSchema={() => editorRef.current?.getJSON()}
           onApplySchema={(schema, title) => {
-            if (editorRef.current) {
-              editorRef.current.commands.setContent(schema);
-              setFormTitle(title);
-              saveForm(schema, title);
-            }
+            const editor = editorRef.current;
+            if (!editor) return;
+            editor.commands.setContent(schema);
+            setFormTitle(title);
+            // setContent carries the document attrs too. Mirror them into React
+            // state so an AI-generated quiz shows Quiz Mode as on straight away
+            // instead of waiting for the next selection change.
+            const docAttrs = editor.state.doc.attrs;
+            setQuizMode(docAttrs.quizMode ?? false);
+            setShowResultsImmediately(docAttrs.showResultsImmediately ?? true);
+            // Persist what the editor actually holds, not the raw AI payload.
+            saveForm(editor.getJSON(), title);
           }}
         />
       </div>

@@ -71,7 +71,10 @@ export const useAIFormBuilder = (getCurrentSchema?: () => any) => {
       setGeneratedSchema(schema)
       setPhase("preview")
     } catch (err) {
-      setError("Failed to generate a valid form schema. Try regenerating.")
+      // Was a single generic string, which hid the actual cause — being signed
+      // out, rate limited, or offline all reported "invalid form schema".
+      console.error("AI form generation failed:", err)
+      setError(err instanceof Error ? err.message : "Failed to generate a form. Try regenerating.")
       setPhase("error")
     } finally {
       setLoading(false)

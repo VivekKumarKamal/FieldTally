@@ -44,6 +44,17 @@ ID UNIQUENESS (CRITICAL):
 - If two questions are similar (e.g. two name fields), differentiate them: "q_first_name", "q_last_name".
 - If modifying an existing schema, make sure all new questions have completely new unique IDs, and unmodified questions keep their original IDs.
 
+QUIZ:
+- If the user asks for a quiz, test, exam, assessment, or anything scored, set attrs.quizMode true
+  on the document AND give every multipleChoice/checkbox/number question a correctAnswer.
+- A quiz with no correctAnswer anywhere scores 0/0 and is useless — never emit one.
+- Prefer multipleChoiceBlock for single-answer questions and checkboxBlock when several options are correct.
+- Do not set quizMode for ordinary surveys, feedback forms or data collection.
+
+SEARCHABLE CHOICES:
+- Set attrs.searchable true on a choice block whose option list is long (roughly 8+), so the
+  respondent filters by typing instead of scrolling.
+
 LOGIC RULES:
 - Only include logicBlock nodes if conditional logic was explicitly discussed during the conversation.
 - Generate ALL logicBlock nodes at the very END of the content array, AFTER all question and layout nodes. Do NOT interleave logicBlocks between questions.

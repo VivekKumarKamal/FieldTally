@@ -3,6 +3,9 @@ import { buildGenerationPrompt } from "./buildGenerationPrompt"
 import { validateFormSchema } from "./validateFormSchema"
 import { apiSend } from "@/lib/apiClient"
 
+/** The model produced something unusable — as opposed to the request failing. */
+export class SchemaGenerationError extends Error {}
+
 const callAI = async (systemPrompt: string, messages: Message[]): Promise<string> => {
   const result = await apiSend<{ content: string }>("/api/ai/chat", "POST", {
     systemPrompt,
@@ -25,23 +28,36 @@ export const generateFormSchema = async (
 ): Promise<DocSchema> => {
   const systemPrompt = buildGenerationPrompt(tone, currentSchema)
 
-  // Attempt 1
+  // Attempt 1. A transport failure (not signed in, rate limited, network) throws
+  // out of callAI and must reach the caller unchanged — only the model's own bad
+  // output is worth retrying.
   const raw = await callAI(systemPrompt, conversationHistory)
 
   let parsed: unknown
   try {
     parsed = JSON.parse(raw)
   } catch {
-    // Attempt 2 — ask model to fix its own output
+    // Attempt 2 — ask the model to fix its own output
     const fixMessages: Message[] = [
       ...conversationHistory,
       { role: "assistant", content: raw },
       { role: "user", content: "The output was not valid JSON. Return only the corrected JSON object, nothing else." }
     ]
     const retryRaw = await callAI(systemPrompt, fixMessages)
-    parsed = JSON.parse(retryRaw)
+    try {
+      parsed = JSON.parse(retryRaw)
+    } catch {
+      throw new SchemaGenerationError("The AI did not return valid JSON.")
+    }
   }
 
-  // Zod validation — throws if schema shape is wrong
-  return validateFormSchema(parsed)
+  try {
+    return validateFormSchema(parsed)
+  } catch (err: any) {
+    // Surface which field the model got wrong — every cause so far has been one
+    // bad node rejecting the whole document.
+    const issue = err?.issues?.[0]
+    const where = issue ? `${issue.path?.join(".") || "schema"}: ${issue.message}` : "unexpected shape"
+    throw new SchemaGenerationError(`The AI returned a form we could not read (${where}).`)
+  }
 }

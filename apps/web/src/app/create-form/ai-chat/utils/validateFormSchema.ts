@@ -4,6 +4,16 @@ import { DocSchema } from "../types"
 
 const TextNode = z.object({ type: z.literal("text"), text: z.string() })
 
+// ── Quiz grading ──
+// Zod strips anything it does not declare, so every quiz attribute has to be
+// listed here or a generated quiz arrives in the editor as a plain form.
+const QuizPoints = z.number().positive().optional()
+/** numberAnswerBlock grades against an exact value or an inclusive range. */
+const NumberCorrectAnswer = z.union([
+  z.object({ type: z.literal("exact"), value: z.number() }),
+  z.object({ type: z.literal("range"), min: z.number().optional(), max: z.number().optional() }),
+])
+
 const SimpleQuestionBlock = z.object({
   type: z.enum([
     "shortAnswerBlock", "longAnswerBlock", "numberAnswerBlock",
@@ -15,7 +25,10 @@ const SimpleQuestionBlock = z.object({
     id: z.string().regex(/^q_/),
     required: z.boolean(),
     placeholder: z.string().optional(),
-    rows: z.number().optional()
+    rows: z.number().optional(),
+    // Only numberAnswerBlock is graded; harmless elsewhere.
+    correctAnswer: NumberCorrectAnswer.nullable().optional(),
+    quizPoints: QuizPoints
   }),
   content: z.array(TextNode).min(1)
 })
@@ -23,7 +36,14 @@ const SimpleQuestionBlock = z.object({
 const MultipleChoiceBlock = z.object({
   type: z.literal("multipleChoiceBlock"),
   // `searchable` must be declared or Zod strips it from the AI's output.
-  attrs: z.object({ id: z.string().regex(/^q_/), required: z.boolean(), searchable: z.boolean().optional() }),
+  attrs: z.object({
+    id: z.string().regex(/^q_/),
+    required: z.boolean(),
+    searchable: z.boolean().optional(),
+    // Single-select: the exact text of the one correct option.
+    correctAnswer: z.string().nullable().optional(),
+    quizPoints: QuizPoints
+  }),
   content: z.array(z.object({
     type: z.enum(["multipleChoiceTitle", "multipleChoiceOption"]),
     content: z.array(TextNode)
@@ -32,7 +52,14 @@ const MultipleChoiceBlock = z.object({
 
 const CheckboxBlock = z.object({
   type: z.literal("checkboxBlock"),
-  attrs: z.object({ id: z.string().regex(/^q_/), required: z.boolean(), searchable: z.boolean().optional() }),
+  attrs: z.object({
+    id: z.string().regex(/^q_/),
+    required: z.boolean(),
+    searchable: z.boolean().optional(),
+    // Multi-select: the exact text of every correct option.
+    correctAnswer: z.array(z.string()).nullable().optional(),
+    quizPoints: QuizPoints
+  }),
   content: z.array(z.object({
     type: z.enum(["checkboxTitle", "checkboxOption"]),
     content: z.array(TextNode)
@@ -86,6 +113,12 @@ const AnyNode = z.union([
 
 export const FormDocSchema = z.object({
   type: z.literal("doc"),
+  // Quiz mode is a document-level attribute; without declaring it here Zod drops
+  // it and the generated quiz renders as an ordinary form.
+  attrs: z.object({
+    quizMode: z.boolean().optional(),
+    showResultsImmediately: z.boolean().optional()
+  }).optional(),
   content: z.array(AnyNode).min(1)
 })
 

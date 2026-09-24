@@ -161,5 +161,55 @@ check("searchable flag SURVIVES stripping (checkbox)", strippedQuiz.content[1].a
 check("question id survives stripping", strippedQuiz.content[1].attrs.id, "q2");
 check("options survive stripping", strippedQuiz.content[1].content.length, 4);
 
+
+// ── AI-generated quizzes survive validation and grade ───────────────────────
+import { validateFormSchema } from "../../apps/web/src/app/create-form/ai-chat/utils/validateFormSchema";
+
+const txt = (t: string) => [{ type: "text", text: t }];
+const node = (type: string, t: string) => ({ type, content: txt(t) });
+
+/** The shape the model is told to emit for "make me a quiz". */
+const aiQuiz = {
+  type: "doc",
+  attrs: { quizMode: true, showResultsImmediately: true },
+  content: [
+    { type: "heading", attrs: { level: 1 as const }, content: txt("Safety Quiz") },
+    {
+      type: "multipleChoiceBlock",
+      attrs: { id: "q_ppe", required: true, correctAnswer: "Hard hat", quizPoints: 3 },
+      content: [node("multipleChoiceTitle", "Required on site?"), node("multipleChoiceOption", "Hard hat"), node("multipleChoiceOption", "Sandals")],
+    },
+    {
+      type: "checkboxBlock",
+      attrs: { id: "q_kit", required: true, searchable: true, correctAnswer: ["Gloves", "Goggles"], quizPoints: 4 },
+      content: [node("checkboxTitle", "Pick the PPE"), node("checkboxOption", "Gloves"), node("checkboxOption", "Goggles"), node("checkboxOption", "Radio")],
+    },
+    {
+      type: "numberAnswerBlock",
+      attrs: { id: "q_height", required: true, correctAnswer: { type: "range" as const, min: 2, max: 4 }, quizPoints: 2 },
+      content: txt("Safe ladder angle ratio?"),
+    },
+  ],
+};
+
+console.log("\n── AI quiz survives Zod validation ──");
+const parsed: any = validateFormSchema(aiQuiz);
+check("quizMode reaches the editor", parsed.attrs?.quizMode, true);
+check("showResultsImmediately preserved", parsed.attrs?.showResultsImmediately, true);
+check("mcq answer key preserved", parsed.content[1].attrs.correctAnswer, "Hard hat");
+check("mcq points preserved", parsed.content[1].attrs.quizPoints, 3);
+check("checkbox answer key preserved", JSON.stringify(parsed.content[2].attrs.correctAnswer), '["Gloves","Goggles"]');
+check("searchable preserved alongside quiz", parsed.content[2].attrs.searchable, true);
+check("number range key preserved", JSON.stringify(parsed.content[3].attrs.correctAnswer), '{"type":"range","min":2,"max":4}');
+
+console.log("\n── and the validated schema actually grades ──");
+const full = gradeQuiz(parsed, { q_ppe: "Hard hat", q_kit: ["Gloves", "Goggles"], q_height: 3 });
+check("all correct scores full marks", full?.score, 9);
+check("total points add up", full?.totalPoints, 9);
+const partial2 = gradeQuiz(parsed, { q_ppe: "Sandals", q_kit: ["Gloves"], q_height: 9 });
+check("wrong mcq scores 0", partial2?.details["q_ppe"].pointsEarned, 0);
+check("half the checkboxes earns half", partial2?.details["q_kit"].pointsEarned, 2);
+check("number outside range scores 0", partial2?.details["q_height"].pointsEarned, 0);
+
 console.log(failures === 0 ? "\nAll checks passed.\n" : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);
