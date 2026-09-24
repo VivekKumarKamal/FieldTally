@@ -103,6 +103,39 @@ export function gradeQuiz(schema: any, answers: Record<string, any>): QuizResult
   return { score, totalPoints, percentage, correctCount, totalCount, details };
 }
 
+export interface QuizSummary {
+  /** Every question on the form, graded or not. */
+  totalQuestions: number;
+  /** Questions that carry an answer key, i.e. the ones that score. */
+  gradedQuestions: number;
+  totalPoints: number;
+}
+
+/**
+ * What a quiz is worth in total. Questions without a `correctAnswer` (short
+ * answer, date, GPS…) are ungraded and contribute nothing, which is why the
+ * count can be lower than the number of questions on the form.
+ */
+export function summarizeQuiz(schema: any): QuizSummary {
+  let totalQuestions = 0;
+  let gradedQuestions = 0;
+  let totalPoints = 0;
+
+  for (const node of schema?.content ?? []) {
+    if (!node || node.type === "logicBlock") continue;
+    // A question is any block the renderer gives an answer slot — i.e. one with
+    // an id. Headings, paragraphs and rules have none.
+    if (!node.attrs?.id) continue;
+    totalQuestions++;
+
+    if (node.attrs.correctAnswer == null) continue;
+    gradedQuestions++;
+    totalPoints += node.attrs.quizPoints ?? 1;
+  }
+
+  return { totalQuestions, gradedQuestions, totalPoints };
+}
+
 export function isQuizSchema(schema: any): boolean {
   return schema?.attrs?.quizMode === true;
 }

@@ -422,8 +422,9 @@ export default function ChatPanel({ isOpen, onClose, onApplySchema, currentFormT
             </div>
           )}
 
-          {/* Input Form (only during elicitation phase) */}
-          {(phase === "eliciting" && tone) && (
+          {/* Input stays available after a failure too — hiding it left the user
+              with a dead panel and no way to retry or reword. */}
+          {((phase === "eliciting" || phase === "error") && tone) && (
             <div className="p-4 border-t border-zinc-100 bg-white shrink-0 rounded-b-2xl">
               {/* Interactive Tone Pill Selector */}
               <div className="flex flex-col gap-1.5 pb-3">

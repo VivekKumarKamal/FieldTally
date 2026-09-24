@@ -34,6 +34,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useLogicStore } from "../../hooks/useLogicStore";
 import { turnBlockInto, TURN_INTO_TARGETS, isConvertibleBlock, resolveTargetKey } from "../../lib/turnInto";
+import { summarizeQuiz } from "../../lib/quiz";
 import {
   loadForm as loadFormAction,
   saveDraft,
@@ -177,6 +178,8 @@ function FormEditorContent() {
   const [isKeyboardActive, setIsKeyboardActive] = useState(false);
   const [activeNodePos, setActiveNodePos] = useState<number | null>(null);
   const [isRequired, setIsRequired] = useState(false);
+  const titleRef = useRef<HTMLTextAreaElement | null>(null);
+  const [quizSummary, setQuizSummary] = useState({ totalQuestions: 0, gradedQuestions: 0, totalPoints: 0 });
   const [isSearchable, setIsSearchable] = useState(false);
   const [turnIntoOpen, setTurnIntoOpen] = useState(false);
   const [menuVerticalAlign, setMenuVerticalAlign] = useState<"top" | "bottom">("top");
@@ -330,6 +333,14 @@ function FormEditorContent() {
     document.title = formTitle ? `${formTitle} · FieldTally` : "FieldTally";
   }, [formTitle]);
 
+  // Grow the title box to fit its content so nothing is cut off.
+  useEffect(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [formTitle, isLoaded]);
+
   const saveForm = async (json: any, titleOverride?: string) => {
     if (!formId) return;
     setSaveStatus("saving");
@@ -364,6 +375,7 @@ function FormEditorContent() {
 
   const handleEditorUpdate = (editor: TiptapEditor) => {
     setIsEditorEmpty(isDocEmpty(editor));
+    if (editor.state.doc.attrs.quizMode) setQuizSummary(summarizeQuiz(editor.getJSON()));
     setSaveStatus("saving");
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     timeoutRef.current = setTimeout(() => {
@@ -459,6 +471,8 @@ function FormEditorContent() {
     const docAttrs = editor.state.doc.attrs;
     setQuizMode(docAttrs.quizMode ?? false);
     setShowResultsImmediately(docAttrs.showResultsImmediately ?? true);
+    // Only pay for the walk when there is a quiz to summarise.
+    if (docAttrs.quizMode) setQuizSummary(summarizeQuiz(editor.getJSON()));
   };
 
   const getHandleTargetPos = () => {
@@ -1645,14 +1659,42 @@ function FormEditorContent() {
 
           {/* Form Title */}
           <div className="mb-8">
-            <input
-              type="text"
+            {/* A textarea, not an input: a long title used to scroll sideways out
+                of view. This wraps and grows so the whole title stays readable.
+                Enter is swallowed — a form title is still one line of text. */}
+            <textarea
+              ref={titleRef}
               value={formTitle}
-              onChange={(e) => handleTitleChange(e.target.value)}
+              onChange={(e) => handleTitleChange(e.target.value.replace(/\n/g, ""))}
+              onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
               placeholder="Form Title"
               className="form-title-input"
+              rows={1}
               maxLength={200}
             />
+
+            {quizMode && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 animate-in fade-in duration-200">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold uppercase tracking-wider">
+                  <Trophy size={12} />
+                  Quiz
+                </span>
+                <span className="text-xs text-zinc-500">
+                  <strong className="font-semibold text-zinc-700">{quizSummary.totalQuestions}</strong>
+                  {quizSummary.totalQuestions === 1 ? " question" : " questions"}
+                  <span className="text-zinc-300"> · </span>
+                  <strong className="font-semibold text-zinc-700">{quizSummary.gradedQuestions}</strong> graded
+                  <span className="text-zinc-300"> · </span>
+                  <strong className="font-semibold text-zinc-700">{quizSummary.totalPoints}</strong>
+                  {quizSummary.totalPoints === 1 ? " point" : " points"} total
+                </span>
+                {quizSummary.gradedQuestions === 0 && (
+                  <span className="text-xs text-amber-600">
+                    — no answer keys set yet, so nothing will score
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           <div className={quizMode ? "quiz-mode-active" : ""}>
@@ -1857,13 +1899,22 @@ function FormEditorContent() {
             const editor = editorRef.current;
             if (!editor) return;
             editor.commands.setContent(schema);
+
+            // setContent runs tr.replaceWith(0, size, content): it swaps the doc's
+            // CONTENT and leaves the doc node's own attrs untouched, so quizMode
+            // on a generated quiz was being dropped. Apply them explicitly.
+            const incoming = (schema as { attrs?: Record<string, unknown> })?.attrs ?? {};
+            const quiz = incoming.quizMode === true;
+            const showResults = incoming.showResultsImmediately !== false;
+            editor.view.dispatch(
+              editor.state.tr
+                .setDocAttribute("quizMode", quiz)
+                .setDocAttribute("showResultsImmediately", showResults)
+            );
+
             setFormTitle(title);
-            // setContent carries the document attrs too. Mirror them into React
-            // state so an AI-generated quiz shows Quiz Mode as on straight away
-            // instead of waiting for the next selection change.
-            const docAttrs = editor.state.doc.attrs;
-            setQuizMode(docAttrs.quizMode ?? false);
-            setShowResultsImmediately(docAttrs.showResultsImmediately ?? true);
+            setQuizMode(quiz);
+            setShowResultsImmediately(showResults);
             // Persist what the editor actually holds, not the raw AI payload.
             saveForm(editor.getJSON(), title);
           }}
