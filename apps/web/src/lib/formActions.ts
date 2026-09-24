@@ -32,6 +32,29 @@ export function getKnownServerVersion(formId: string): string | null {
   return knownServerVersion.get(formId) ?? null;
 }
 
+/**
+ * One in-flight save per form, chained rather than parallel.
+ *
+ * The editor has several independent autosave triggers — a title debounce, a
+ * content debounce, the manual save button, template/AI apply — with no
+ * coordination between them. Two firing within the same second used to both
+ * read `knownServerVersion` before either write landed, so both sent the same
+ * stale `expected_updated_at`; the first save then made the second look like it
+ * was overwriting someone else's change and it was rejected as a conflict, even
+ * though both were this tab a second apart. Chaining every save for a form
+ * behind the previous one guarantees each reads the version the one before it
+ * actually produced.
+ */
+const saveQueue = new Map<string, Promise<unknown>>();
+
+function enqueueSave<T>(formId: string, run: () => Promise<T>): Promise<T> {
+  const prior = saveQueue.get(formId) ?? Promise.resolve();
+  const started = prior.then(run, run);
+  // A failed save must not wedge the queue for every save after it.
+  saveQueue.set(formId, started.catch(() => {}));
+  return started;
+}
+
 // ── Parse helpers ──
 
 export function parseStoredDraft(raw: string | null): StoredDraft | null {
@@ -165,6 +188,15 @@ export async function loadForm(initialContent: any, formIdParam?: string | null)
 // ── Save draft ──
 
 export async function saveDraft(
+  formId: string,
+  userId: string | null,
+  json: any,
+  title: string
+): Promise<{ ok: boolean; error?: string; conflict?: boolean }> {
+  return enqueueSave(formId, () => performSaveDraft(formId, userId, json, title));
+}
+
+async function performSaveDraft(
   formId: string,
   userId: string | null,
   json: any,

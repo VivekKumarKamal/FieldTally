@@ -348,9 +348,9 @@ function ExportPdfContent() {
       `}} />
 
       {/* Top bar */}
-      <div className="export-topbar h-14 border-b border-zinc-200/60 bg-white/70 backdrop-blur-xl px-6 flex items-center justify-between z-50 shrink-0 transition-all duration-200">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
+      <div className="export-topbar h-14 border-b border-zinc-200/60 bg-white/70 backdrop-blur-xl px-3 sm:px-6 flex items-center justify-between gap-2 z-50 shrink-0 transition-all duration-200">
+        <div className="flex items-center gap-2 sm:gap-6 min-w-0">
+          <div className="hidden sm:flex items-center gap-2">
             <div className="w-6 h-6 bg-gradient-to-br from-zinc-800 to-zinc-600 rounded flex items-center justify-center shadow-sm">
               <span className="text-white text-xs font-bold tracking-tighter block">FT</span>
             </div>
@@ -359,15 +359,17 @@ function ExportPdfContent() {
           <div className="h-4 w-px bg-zinc-200" />
           <button
             onClick={() => window.close()}
-            className="flex items-center gap-1.5 text-sm font-medium text-zinc-600 hover:text-zinc-950 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors py-1.5 px-3.5 cursor-pointer"
+            className="flex items-center gap-1.5 text-sm font-medium text-zinc-600 hover:text-zinc-950 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors py-1.5 px-3 cursor-pointer shrink-0 whitespace-nowrap"
           >
-            <ArrowLeft size={14} /> Back to Editor
+            <ArrowLeft size={14} className="shrink-0" />
+            <span className="hidden sm:inline">Back to Editor</span>
+            <span className="sm:hidden">Back</span>
           </button>
         </div>
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 sm:gap-6 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
             <FileText size={16} className="text-zinc-400" />
-            <span className="text-sm text-zinc-700 font-semibold truncate max-w-[200px]">{formTitle}</span>
+            <span className="hidden sm:inline text-sm text-zinc-700 font-semibold truncate max-w-[120px] md:max-w-[200px]">{formTitle}</span>
           </div>
           {pages.length > 0 && (
             <>
@@ -381,9 +383,12 @@ function ExportPdfContent() {
       </div>
 
       {/* Main Workspace split */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Left Side: Simulated A4 Pages scroll list */}
-        <div className="workspace-container flex-1 bg-zinc-50 overflow-y-auto p-8 flex flex-col items-center gap-8 relative border-r border-zinc-200/60">
+        <div // ponytail: the page sheet is a fixed A4 width (794px at 96dpi) — it cannot
+              // reflow, so below that the workspace pans instead. Scale-to-fit would
+              // need a measured zoom factor; add it if mobile export becomes a real flow.
+              className="workspace-container flex-1 bg-zinc-50 overflow-y-auto overflow-x-auto p-4 sm:p-8 flex flex-col items-center gap-8 relative lg:border-r border-zinc-200/60">
           <div
             className="absolute inset-0 pointer-events-none"
             style={{ backgroundImage: "radial-gradient(circle, #e4e4e7 1px, transparent 1px)", backgroundSize: "24px 24px" }}
@@ -507,7 +512,7 @@ function ExportPdfContent() {
         </div>
 
         {/* Right Side: Settings Panel */}
-        <div className="settings-sidebar w-80 border-l border-zinc-200 bg-white p-6 flex flex-col justify-between shrink-0 overflow-y-auto">
+        <div className="settings-sidebar w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-zinc-200 bg-white p-4 sm:p-6 flex flex-col justify-between lg:shrink-0 overflow-y-auto">
           <div className="flex flex-col gap-8">
             <div className="flex items-center gap-2">
               <Settings2 size={16} className="text-zinc-500" />

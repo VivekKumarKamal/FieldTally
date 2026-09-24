@@ -27,6 +27,7 @@ import { LogicBlock } from "../extensions/logicBlock";
 import { GpsAnswerBlock } from "../extensions/gpsAnswer";
 import { ImageAnswerBlock } from "../extensions/imageAnswer";
 import { SignatureAnswerBlock } from "../extensions/signatureAnswer";
+import { QuizAnswerPicker } from "../extensions/quizAnswerPicker";
 
 const ID_BLOCK_TYPES = [
   "shortAnswerBlock",
@@ -374,6 +375,7 @@ export const defaultExtensions = [
   SignatureAnswerBlock,
   RequiredAttribute,
   QuizAttribute,
+  QuizAnswerPicker,
   SearchableAttribute,
   CustomDocument,
   dragHandle,

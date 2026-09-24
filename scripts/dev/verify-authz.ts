@@ -15,6 +15,7 @@ import {
   type EffectiveRole,
 } from "../../apps/web/src/lib/authz";
 import { gradeQuiz, stripAnswerKey } from "../../apps/web/src/lib/quiz";
+import { saveDraft } from "../../apps/web/src/lib/formActions";
 
 const openPublished = { status: "published", access_open: true, created_by: "owner-1" };
 const closedPublished = { status: "published", access_open: false, created_by: "owner-1" };
@@ -211,5 +212,62 @@ check("wrong mcq scores 0", partial2?.details["q_ppe"].pointsEarned, 0);
 check("half the checkboxes earns half", partial2?.details["q_kit"].pointsEarned, 2);
 check("number outside range scores 0", partial2?.details["q_height"].pointsEarned, 0);
 
-console.log(failures === 0 ? "\nAll checks passed.\n" : `\n${failures} check(s) FAILED.\n`);
-process.exit(failures === 0 ? 0 : 1);
+
+// ── Same-tab autosave race no longer produces a false conflict ─────────────
+// The editor has two independent debounce timers (title, content) plus a few
+// direct save triggers (manual save, template/AI apply), none coordinated with
+// each other. Two firing close together used to both read the last known
+// server version before either write landed, so the second was rejected as a
+// conflict even though both were this tab a moment apart.
+function runAutosaveRaceCheck(): Promise<void> {
+  return (async () => {
+  let serverUpdatedAt = "2026-01-01T00:00:00.000Z";
+  let tick = 0;
+  const nextTimestamp = () => new Date(Date.parse(serverUpdatedAt) + (++tick) * 1000).toISOString();
+
+  const realFetch = global.fetch;
+  // @ts-expect-error - stubbing the network this module's apiClient calls
+  global.fetch = async (url: string, init: any) => {
+    const body = init?.body ? JSON.parse(init.body) : {};
+    if (String(url).includes("/api/forms/") && init?.method === "PATCH") {
+      const expected = body.expected_updated_at;
+      if (expected && !(serverUpdatedAt <= expected)) {
+        return new Response(JSON.stringify({ error: "conflict", conflict: true }), { status: 409 });
+      }
+      serverUpdatedAt = nextTimestamp();
+      return new Response(JSON.stringify({ updated_at: serverUpdatedAt }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ error: "unhandled: " + url }), { status: 500 });
+  };
+
+  console.log("\n── Same-tab autosave race ──");
+  // formActions writes a local cache via `localStorage` on every save; Node has
+  // no such global outside a browser, and the resulting warning is just noise
+  // for this check.
+  // @ts-expect-error - test-only stub
+  global.localStorage = { setItem() {}, getItem() { return null; }, removeItem() {} };
+  const formId = "race-test-form";
+  await saveDraft(formId, "user-1", { type: "doc" }, "Initial");
+
+  // Two debounce timers firing within the same window, neither awaiting the other.
+  const [titleSave, contentSave] = await Promise.all([
+    saveDraft(formId, "user-1", { type: "doc", content: [] }, "Renamed while typing"),
+    saveDraft(formId, "user-1", { type: "doc", content: [{ type: "paragraph" }] }, "Renamed while typing"),
+  ]);
+  check("title-timer save succeeds", titleSave.ok, true);
+  check("content-timer save succeeds", contentSave.ok, true);
+  check("neither reports a false conflict", Boolean(titleSave.conflict || contentSave.conflict), false);
+
+  // A genuine external write (another tab/device) must still be caught.
+  serverUpdatedAt = nextTimestamp();
+  const realConflict = await saveDraft(formId, "user-1", { type: "doc" }, "Stale edit");
+  check("a real external conflict is still detected", realConflict.conflict, true);
+
+  global.fetch = realFetch;
+  })();
+}
+
+runAutosaveRaceCheck().then(() => {
+  console.log(failures === 0 ? "\nAll checks passed.\n" : `\n${failures} check(s) FAILED.\n`);
+  process.exit(failures === 0 ? 0 : 1);
+});

@@ -37,16 +37,16 @@ export default function PreviewPage() {
 
   if (!formSchema) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ marginLeft: "-64px" }}>
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-zinc-400 animate-pulse">Loading preview...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white" style={{ marginLeft: "-64px" }}>
+    <div className="min-h-screen bg-white">
       {/* Top bar */}
-      <div className="fixed top-0 left-0 right-0 h-14 bg-white/90 backdrop-blur-md border-b border-zinc-200 z-50 px-6 flex items-center gap-4">
+      <div className="fixed top-0 left-0 right-0 h-14 bg-white/90 backdrop-blur-md border-b border-zinc-200 z-50 px-3 sm:px-6 flex items-center gap-2 sm:gap-4">
         <button
           onClick={() => {
             const previewFormId = localStorage.getItem("preview_form_id");
@@ -56,16 +56,18 @@ export default function PreviewPage() {
               router.push("/create-form");
             }
           }}
-          className="flex items-center gap-2 text-sm font-medium text-zinc-600 hover:text-zinc-900 transition-colors"
+          className="flex items-center gap-2 text-sm font-medium text-zinc-600 hover:text-zinc-900 transition-colors shrink-0 min-h-[2.25rem]"
         >
-          <ArrowLeft size={16} /> Back to editor
+          <ArrowLeft size={16} className="shrink-0" />
+          <span className="hidden sm:inline">Back to editor</span>
+          <span className="sm:hidden">Back</span>
         </button>
-        <div className="h-4 w-px bg-zinc-300" />
-        <span className="text-sm text-zinc-400 font-medium">Preview Mode</span>
+        <div className="h-4 w-px bg-zinc-300 shrink-0" />
+        <span className="text-sm text-zinc-400 font-medium truncate">Preview Mode</span>
       </div>
 
       {/* Form */}
-      <div className="pt-28 pb-20 px-12 max-w-4xl mx-auto">
+      <div className="pt-20 sm:pt-24 lg:pt-28 pb-20 px-4 sm:px-8 lg:px-12 max-w-4xl mx-auto">
         <FormRenderer
           schema={formSchema}
           title={formTitle}

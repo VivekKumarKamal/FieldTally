@@ -525,27 +525,6 @@ body {
   background-color: #a7f3d0;
 }
 
-/* Quiz answer indicator for ProseMirror checkbox/MCQ blocks (::before on title) */
-.quiz-mode-active .tiptap:not(.form-renderer) [data-correct-answer] div[data-type="checkbox-title"]::before,
-.quiz-mode-active .tiptap:not(.form-renderer) [data-correct-answer] div[data-type="multiple-choice-title"]::before {
-  content: "✓";
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  background-color: #d1fae5;
-  color: #059669;
-  border-radius: 50%;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1;
-  user-select: none;
-  flex-shrink: 0;
-  margin-right: 6px;
-  vertical-align: middle;
-}
-
 /* Hide <br> inside empty checkbox/multipleChoice titles so ::after stays inline */
 .tiptap [data-required="true"] div[data-type="checkbox-title"].is-empty br,
 .tiptap [data-required="true"] div[data-type="multiple-choice-title"].is-empty br {
@@ -591,6 +570,11 @@ body {
   width: 100%;
   border: none;
   outline: none;
+  /* textarea resets so it reads as a heading, not a form field */
+  resize: none;
+  overflow: hidden;
+  display: block;
+  font-family: inherit;
   font-size: 2.5rem;
   font-weight: 800;
   color: #18181b;
@@ -881,4 +865,102 @@ body {
     padding-top: 0.625rem;
     padding-bottom: 0.625rem;
   }
+}
+
+/* ── Inline quiz answer picker ──────────────────────────────────────────────
+   In quiz mode the option marker becomes the control for the answer key: it
+   shows which option is correct and clicking it sets or clears that option.
+   Driven by decorations from quizAnswerPicker.ts. */
+.quiz-mode-active .tiptap:not(.form-renderer) .quiz-pick .option-marker {
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.quiz-mode-active .tiptap:not(.form-renderer) .quiz-pick:hover .option-marker {
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
+}
+
+/* The correct option: a filled green marker with a white tick. */
+.quiz-mode-active .tiptap:not(.form-renderer) .quiz-pick-correct .option-marker {
+  background-color: #10b981;
+  border-color: #10b981;
+}
+
+.quiz-mode-active .tiptap:not(.form-renderer) .quiz-pick-correct .option-marker::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+/* Name the correct answer in plain text so it survives a screenshot, a
+   colour-blind reader, and printing — colour alone is not an indicator. */
+.quiz-mode-active .tiptap:not(.form-renderer) .quiz-pick-correct::after {
+  content: "Correct answer";
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background-color: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* Hint the affordance on an untouched quiz block. */
+.quiz-mode-active .tiptap:not(.form-renderer) .quiz-pick:hover .option-content::after {
+  content: "click the circle to mark correct";
+  margin-left: 8px;
+  font-size: 10px;
+  color: #a1a1aa;
+  user-select: none;
+}
+
+.quiz-mode-active .tiptap:not(.form-renderer) .quiz-pick-correct:hover .option-content::after {
+  content: none;
+}
+
+/* Per-question mark allocation, from the quizAnswerPicker decorations.
+   Absolutely positioned so it never joins the title's inline flow — that is what
+   pushed the required asterisk onto its own line. */
+.quiz-mode-active .tiptap:not(.form-renderer) .has-quiz-points {
+  position: relative;
+}
+
+.quiz-mode-active .tiptap:not(.form-renderer) .has-quiz-points::before {
+  content: attr(data-quiz-points);
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background-color: #f4f4f5;
+  color: #52525b;
+  border: 1px solid #e4e4e7;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* The A4 page sheet is wider than the workspace on small screens. With plain
+   `center` a too-wide flex item overflows both edges and the left overhang can
+   never be scrolled to. `safe center` centres it while it fits and falls back to
+   start alignment once it doesn't, keeping the whole sheet reachable. */
+.workspace-container {
+  align-items: safe center;
 }
