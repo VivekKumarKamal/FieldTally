@@ -128,7 +128,30 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ content: text })
   } catch (err: unknown) {
-    // The upstream error can echo the prompt or key material — log it, don't return it.
+    // The SDK throws on any upstream API error. Flattening them all to 500 made
+    // an expired key, an exhausted quota and a genuine bug look identical from
+    // the UI. Map the operator-actionable ones; log everything.
+    const status = (err as { status?: number; code?: number })?.status ?? (err as { code?: number })?.code
+    const raw = err instanceof Error ? err.message : String(err)
+    console.error("[/api/ai/chat] upstream failure:", status ?? "-", raw)
+
+    if (status === 429 || /RESOURCE_EXHAUSTED|quota|rate limit/i.test(raw)) {
+      return jsonError(
+        "The AI service is over its quota right now. Check the Gemini key's usage limits, then try again.",
+        429
+      )
+    }
+    if (status === 401 || status === 403 || /API key not valid|API_KEY_INVALID|PERMISSION_DENIED|UNAUTHENTICATED/i.test(raw)) {
+      return jsonError("The server's Gemini API key was rejected. Check GOOGLE_API_KEY on the server.", 502)
+    }
+    if (status === 404 || /NOT_FOUND|is not found for API version/i.test(raw)) {
+      return jsonError("The configured AI model is not available for this API key.", 502)
+    }
+    if (/SAFETY|blocked/i.test(raw)) {
+      return jsonError("The AI declined to answer that prompt. Try rewording it.", 422)
+    }
+
+    // Anything unrecognised stays generic — it may echo the prompt or key material.
     return serverError("/api/ai/chat", err)
   }
 }
