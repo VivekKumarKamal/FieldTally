@@ -66,15 +66,22 @@ export async function POST(req: NextRequest) {
       return jsonError("Conversation is too large", 413)
     }
 
-    const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY
+    // Trimmed: a value pasted into a host's env UI often carries a newline, and
+    // the SDK would send it as-is.
+    const apiKey = (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY)?.trim()
 
     if (!apiKey) {
       console.error("[/api/ai/chat] No GOOGLE_API_KEY or GEMINI_API_KEY configured")
       return jsonError("AI is not configured on this server.", 503)
     }
 
-    // Initialize the new GoogleGenAI SDK client
-    const ai = new GoogleGenAI({ apiKey })
+    // `vertexai: false` is load-bearing. Left unset, the SDK resolves the flag
+    // from GOOGLE_GENAI_USE_VERTEXAI / GOOGLE_GENAI_USE_ENTERPRISE in the
+    // environment; on a host where either is set it switches to Vertex AI, which
+    // authenticates with OAuth/ADC rather than an API key, and every call fails
+    // with UNAUTHENTICATED / ACCESS_TOKEN_TYPE_UNSUPPORTED no matter how valid
+    // the key is. An explicit option wins over the environment.
+    const ai = new GoogleGenAI({ apiKey, vertexai: false })
 
     // Format chat history to comply with Gemini API constraints:
     // 1. Ensure message content is never empty (prevents 400 Bad Request).
@@ -139,6 +146,12 @@ export async function POST(req: NextRequest) {
       return jsonError(
         "The AI service is over its quota right now. Check the Gemini key's usage limits, then try again.",
         429
+      )
+    }
+    if (/ACCESS_TOKEN_TYPE_UNSUPPORTED|Expected OAuth 2 access token/i.test(raw)) {
+      return jsonError(
+        "The AI client tried to authenticate with OAuth instead of the API key. Unset GOOGLE_GENAI_USE_VERTEXAI / GOOGLE_GENAI_USE_ENTERPRISE on the server.",
+        502
       )
     }
     if (status === 401 || status === 403 || /API key not valid|API_KEY_INVALID|PERMISSION_DENIED|UNAUTHENTICATED/i.test(raw)) {
