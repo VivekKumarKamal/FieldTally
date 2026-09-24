@@ -5,9 +5,13 @@ import { supabase } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus, FileText, Globe, Pencil, Trash2, Clock, AlertCircle, ClipboardList, Compass } from "lucide-react";
-import { parseStoredDraft } from "../../lib/formActions";
+import { parseStoredDraft, deleteForm } from "../../lib/formActions";
+import { apiGet, apiSend } from "../../lib/apiClient";
 import * as Popover from "@radix-ui/react-popover";
 import { TEMPLATES, createFormFromTemplate } from "../../lib/templates";
+
+/** Forms are fetched a page at a time — the list is unbounded in principle. */
+const PAGE_SIZE = 20;
 
 const TEMPLATE_ICONS: Record<string, any> = {
   Compass: Compass,
@@ -43,6 +47,17 @@ export default function Dashboard() {
   const [orphanDraft, setOrphanDraft] = useState<{ id: string; title: string } | null>(null);
   const [claimingDraft, setClaimingDraft] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [totalForms, setTotalForms] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const fetchOwnedForms = async (offset: number) => {
+    const result = await apiGet<{ forms: FormRow[]; total: number; hasMore: boolean }>(
+      `/api/forms?scope=owned&limit=${PAGE_SIZE}&offset=${offset}`
+    );
+    if (!result.ok || !result.data) return null;
+    return result.data;
+  };
 
   useEffect(() => {
     document.title = "Dashboard · FieldTally";
@@ -55,50 +70,26 @@ export default function Dashboard() {
       }
       setUser(currentUser);
 
-      // Fetch all forms owned by this user
-      const { data: userForms } = await supabase
-        .from("forms")
-        .select("id, status, updated_at, draft_schema")
-        .eq("created_by", currentUser.id)
-        .order("updated_at", { ascending: false });
+      const [owned, shared] = await Promise.all([
+        fetchOwnedForms(0),
+        apiGet<{ forms: any[] }>(`/api/forms?scope=shared&limit=${PAGE_SIZE}&offset=0`),
+      ]);
 
-      setForms((userForms as FormRow[]) || []);
+      const ownedForms = owned?.forms ?? [];
+      setForms(ownedForms);
+      setTotalForms(owned?.total ?? ownedForms.length);
+      setHasMore(owned?.hasMore ?? false);
+      setSharedForms(shared.ok ? shared.data?.forms ?? [] : []);
 
-      // Fetch shared forms
-      const { data: sharedMembersData } = await supabase
-        .from("form_members")
-        .select("form_id, role")
-        .eq("user_id", currentUser.id);
-
-      let sharedList: any[] = [];
-      if (sharedMembersData && sharedMembersData.length > 0) {
-        const formIds = sharedMembersData.map(m => m.form_id);
-        const { data: fetchedSharedForms } = await supabase
-          .from("forms")
-          .select("id, status, updated_at, draft_schema, created_by")
-          .in("id", formIds)
-          .neq("created_by", currentUser.id)
-          .order("updated_at", { ascending: false });
-
-        if (fetchedSharedForms) {
-          const roleMap = new Map<string, string>();
-          sharedMembersData.forEach(m => roleMap.set(m.form_id, m.role || "submitter"));
-          sharedList = fetchedSharedForms.map((f: any) => ({
-            ...f,
-            role: roleMap.get(f.id) || "submitter"
-          }));
-        }
-      }
-      setSharedForms(sharedList);
-
-      // Check for orphan local draft (created before login)
+      // Check for orphan local draft (created before login). Only the first page
+      // is loaded, so confirm against the server rather than the loaded slice.
       const localDraftId = localStorage.getItem("current_draft_form_id");
       if (localDraftId) {
-        const alreadyOwned = (userForms || []).some(f => f.id === localDraftId);
-        if (!alreadyOwned) {
-          const localData = localStorage.getItem(`draft_schema_${localDraftId}`);
-          const parsed = parseStoredDraft(localData);
-          if (parsed && (parsed.title || parsed.schema?.content?.length > 1)) {
+        const localData = localStorage.getItem(`draft_schema_${localDraftId}`);
+        const parsed = parseStoredDraft(localData);
+        if (parsed && (parsed.title || parsed.schema?.content?.length > 1)) {
+          const existing = await apiGet(`/api/forms/${localDraftId}?status=draft`);
+          if (!existing.ok) {
             setOrphanDraft({ id: localDraftId, title: parsed.title || "Untitled Form" });
           }
         }
@@ -110,6 +101,17 @@ export default function Dashboard() {
     init();
   }, [router]);
 
+  const handleLoadMore = async () => {
+    setLoadingMore(true);
+    const next = await fetchOwnedForms(forms.length);
+    if (next) {
+      setForms(prev => [...prev, ...next.forms]);
+      setTotalForms(next.total);
+      setHasMore(next.hasMore);
+    }
+    setLoadingMore(false);
+  };
+
   const handleClaimDraft = async () => {
     if (!orphanDraft || !user) return;
     setClaimingDraft(true);
@@ -117,22 +119,23 @@ export default function Dashboard() {
     const localData = localStorage.getItem(`draft_schema_${orphanDraft.id}`);
     const parsed = parseStoredDraft(localData);
     if (parsed) {
-      await supabase.from("forms").upsert({
+      const created = await apiSend("/api/forms", "POST", {
         id: orphanDraft.id,
         draft_schema: { title: parsed.title || "", content: parsed.schema },
-        created_by: user.id,
-        updated_at: parsed.updated_at || new Date().toISOString(),
       });
+      if (!created.ok) {
+        alert(created.error || "Could not save that draft to your account.");
+        setClaimingDraft(false);
+        return;
+      }
     }
 
-    // Refresh forms list
-    const { data: userForms } = await supabase
-      .from("forms")
-      .select("id, status, updated_at, draft_schema")
-      .eq("created_by", user.id)
-      .order("updated_at", { ascending: false });
-
-    setForms((userForms as FormRow[]) || []);
+    const refreshed = await fetchOwnedForms(0);
+    if (refreshed) {
+      setForms(refreshed.forms);
+      setTotalForms(refreshed.total);
+      setHasMore(refreshed.hasMore);
+    }
     setOrphanDraft(null);
     setClaimingDraft(false);
   };
@@ -153,21 +156,19 @@ export default function Dashboard() {
   };
 
   const handleDeleteForm = async (formId: string) => {
-    if (!confirm("Are you sure you want to delete this form? This cannot be undone.")) return;
+    if (!confirm("Are you sure you want to delete this form and all of its responses? This cannot be undone.")) return;
     setDeletingId(formId);
 
-    // Delete versions first, then the form
-    await supabase.from("form_versions").delete().eq("form_id", formId);
-    await supabase.from("forms").delete().eq("id", formId);
+    const result = await deleteForm(formId);
 
-    // Clean up localStorage
-    localStorage.removeItem(`draft_schema_${formId}`);
-    const currentDraft = localStorage.getItem("current_draft_form_id");
-    if (currentDraft === formId) {
-      localStorage.removeItem("current_draft_form_id");
+    if (!result.ok) {
+      alert(result.error || "Failed to delete the form.");
+      setDeletingId(null);
+      return;
     }
 
     setForms(prev => prev.filter(f => f.id !== formId));
+    setTotalForms(prev => Math.max(0, prev - 1));
     setDeletingId(null);
   };
 
@@ -209,7 +210,7 @@ export default function Dashboard() {
     <div className="min-h-screen bg-zinc-50">
       {/* Header */}
       <div className="bg-white border-b border-zinc-200/60">
-        <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-2">
           <Link href="/dashboard" className="flex items-center gap-2">
             <div className="w-6 h-6 bg-gradient-to-br from-zinc-800 to-zinc-600 rounded flex items-center justify-center shadow-sm">
               <span className="text-white text-xs font-bold tracking-tighter">FT</span>
@@ -222,8 +223,8 @@ export default function Dashboard() {
               onClick={handleNewForm}
               className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium text-white bg-zinc-900 hover:bg-zinc-800 rounded-lg transition-colors shadow-sm"
             >
-              <Plus className="w-4 h-4" />
-              New Form
+              <Plus className="w-4 h-4 shrink-0" />
+              <span className="hidden sm:inline">New Form</span>
             </button>
             <div className="w-px h-5 bg-zinc-200"></div>
             <Popover.Root>
@@ -262,7 +263,7 @@ export default function Dashboard() {
       </div>
 
       {/* Content */}
-      <div className="max-w-5xl mx-auto px-6 py-8">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {/* Orphan draft banner */}
         {orphanDraft && (
           <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
@@ -336,7 +337,7 @@ export default function Dashboard() {
 
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold text-zinc-900">Your Forms</h2>
-          <span className="text-sm text-zinc-400">{forms.length} {forms.length === 1 ? "form" : "forms"}</span>
+          <span className="text-sm text-zinc-400">{totalForms} {totalForms === 1 ? "form" : "forms"}</span>
         </div>
 
         {forms.length === 0 ? (
@@ -426,6 +427,18 @@ export default function Dashboard() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {hasMore && (
+          <div className="flex justify-center mt-6">
+            <button
+              onClick={handleLoadMore}
+              disabled={loadingMore}
+              className="px-5 py-2 text-sm font-medium text-zinc-700 bg-white border border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50 rounded-lg transition-all shadow-sm disabled:opacity-50"
+            >
+              {loadingMore ? "Loading…" : `Load more (${totalForms - forms.length} remaining)`}
+            </button>
           </div>
         )}
 

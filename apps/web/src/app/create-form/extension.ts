@@ -87,6 +87,28 @@ export const QuizAttribute = Extension.create({
   },
 });
 
+// Choice blocks that can be turned into a type-to-filter list. Both are listed
+// so "searchable" survives a Turn Into between single- and multi-select.
+const SEARCHABLE_BLOCK_TYPES = ["multipleChoiceBlock", "checkboxBlock"];
+
+export const SearchableAttribute = Extension.create({
+  name: "searchableAttribute",
+  addGlobalAttributes() {
+    return [
+      {
+        types: SEARCHABLE_BLOCK_TYPES,
+        attributes: {
+          searchable: {
+            default: false,
+            renderHTML: attributes => (attributes.searchable ? { "data-searchable": "true" } : {}),
+            parseHTML: element => element.getAttribute("data-searchable") === "true",
+          },
+        },
+      },
+    ];
+  },
+});
+
 export const CustomDocument = Node.create({
   name: "doc",
   topNode: true,
@@ -352,6 +374,7 @@ export const defaultExtensions = [
   SignatureAnswerBlock,
   RequiredAttribute,
   QuizAttribute,
+  SearchableAttribute,
   CustomDocument,
   dragHandle,
   starterKit,

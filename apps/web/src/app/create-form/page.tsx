@@ -22,12 +22,14 @@ import {
   Type, Hash, Mail, Phone, Link2, Calendar, Clock, AlignLeft,
   CheckSquare, CircleDot, MapPin, Image, PenTool,
   Heading1, Heading2, Heading3, List, ListOrdered, Cloud, Check, History, CloudUpload, CloudOff, CloudCheck, ChevronLeft,
-  FileDown, LayoutGrid, Sparkles, Share2, Globe, Lock, Trophy
+  FileDown, LayoutGrid, Sparkles, Share2, Globe, Lock, Trophy,
+  Eye, Upload, MoreHorizontal
 } from "lucide-react";
 import * as Popover from "@radix-ui/react-popover";
 import * as Switch from "@radix-ui/react-switch";
 import { Tooltip } from "../../components/Tooltip";
 import { supabase } from "../../lib/supabase";
+import { apiGet } from "../../lib/apiClient";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useLogicStore } from "../../hooks/useLogicStore";
@@ -175,6 +177,7 @@ function FormEditorContent() {
   const [isKeyboardActive, setIsKeyboardActive] = useState(false);
   const [activeNodePos, setActiveNodePos] = useState<number | null>(null);
   const [isRequired, setIsRequired] = useState(false);
+  const [isSearchable, setIsSearchable] = useState(false);
   const [turnIntoOpen, setTurnIntoOpen] = useState(false);
   const [menuVerticalAlign, setMenuVerticalAlign] = useState<"top" | "bottom">("top");
   const [activeNodeType, setActiveNodeType] = useState<string | null>(null);
@@ -190,7 +193,12 @@ function FormEditorContent() {
   const updateDocAttr = (key: string, value: any) => {
     const editor = editorRef.current;
     if (!editor) return;
-    editor.commands.updateAttributes("doc", { [key]: value });
+    // `updateAttributes` walks state.doc.nodesBetween, which only ever yields the
+    // doc's DESCENDANTS — it can never match the top-level "doc" node, so it used
+    // to no-op silently here. The React state then said "on" until the next
+    // selection change re-read doc.attrs and flipped it back off.
+    // setDocAttribute is ProseMirror's API for attributes on the document itself.
+    editor.view.dispatch(editor.state.tr.setDocAttribute(key, value));
     if (key === "quizMode") setQuizMode(value);
     if (key === "showResultsImmediately") setShowResultsImmediately(value);
     saveForm(editor.getJSON());
@@ -241,6 +249,8 @@ function FormEditorContent() {
   };
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Autosave retries on a timer — only warn about a save conflict once. */
+  const conflictNotifiedRef = useRef(false);
 
   // --- PDF Export Workspace Redirect ---
   const handleExportPDF = () => {
@@ -326,6 +336,19 @@ function FormEditorContent() {
     const titleToSave = titleOverride !== undefined ? titleOverride : formTitle;
     const result = await saveDraft(formId, userId, json, titleToSave);
     setSaveStatus(result.ok ? "saved" : "error");
+
+    // Someone else saved this form while it was open here. Autosave runs on a
+    // timer, so say so once rather than letting the status pill blink red and
+    // leaving the user to discover the lost work later.
+    if (result.conflict && !conflictNotifiedRef.current) {
+      conflictNotifiedRef.current = true;
+      const reload = confirm(
+        `${result.error}\n\nYour changes are still saved in this browser. ` +
+          `Reload now to see the newer version? (Cancel to keep editing — your ` +
+          `next save will still be blocked until you reload.)`
+      );
+      if (reload) window.location.reload();
+    }
   };
 
   // Auto-save whenever only the title changes (no editor update)
@@ -340,7 +363,7 @@ function FormEditorContent() {
   };
 
   const handleEditorUpdate = (editor: TiptapEditor) => {
-    setIsEditorEmpty(editor.isEmpty);
+    setIsEditorEmpty(isDocEmpty(editor));
     setSaveStatus("saving");
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     timeoutRef.current = setTimeout(() => {
@@ -361,6 +384,7 @@ function FormEditorContent() {
   };
 
   const QUIZ_BLOCK_TYPES = new Set(["multipleChoiceBlock", "checkboxBlock", "numberAnswerBlock"]);
+  const SEARCHABLE_BLOCK_TYPES = new Set(["multipleChoiceBlock", "checkboxBlock"]);
 
   const handleMenuOpenChange = (open: boolean) => {
     setMenuOpen(open);
@@ -371,6 +395,7 @@ function FormEditorContent() {
         const node = editorRef.current.state.doc.nodeAt(pos);
         if (node) {
           setIsRequired(node.attrs.required !== false);
+          setIsSearchable(node.attrs.searchable === true);
           setActiveBlockId(node.attrs.id || null);
           setActiveNodeType(resolveTargetKey(node.type.name, node.attrs));
 
@@ -409,10 +434,26 @@ function FormEditorContent() {
     }
   }); // intentionally no deps — runs after every render to catch HMR updates
 
+  /**
+   * True only when the form has nothing the user put there.
+   *
+   * `editor.isEmpty` measures text, so a freshly inserted question block — which
+   * has no text yet — still counted as empty and left the template picker
+   * covering the form. Any non-paragraph node, or a paragraph with text, means
+   * the user has started building.
+   */
+  const isDocEmpty = (editor: TiptapEditor) => {
+    let empty = true;
+    editor.state.doc.forEach((node) => {
+      if (node.type.name !== "paragraph" || node.textContent.trim() !== "") empty = false;
+    });
+    return empty;
+  };
+
   const syncEditorSelection = (editor: TiptapEditor) => {
     editorRef.current = editor;
     lastSelectionRef.current = editor.state.selection.from;
-    setIsEditorEmpty(editor.isEmpty);
+    setIsEditorEmpty(isDocEmpty(editor));
 
     // Read document attributes
     const docAttrs = editor.state.doc.attrs;
@@ -593,11 +634,19 @@ function FormEditorContent() {
     router.push("/login");
   };
 
-  const focusTextBlockAt = (pos: number) => {
+  const focusTextBlockAt = (pos: number, edge: "start" | "end" = "start") => {
     const editor = editorRef.current;
     if (!editor) return;
-    const focusPos = Math.max(1, Math.min(pos + 1, editor.state.doc.content.size));
-    const tr = editor.state.tr.setSelection(TextSelection.near(editor.state.doc.resolve(focusPos), 1));
+    const doc = editor.state.doc;
+    const node = doc.nodeAt(pos);
+
+    // Search forward from the block's start, or backward from its end, so the
+    // caret lands on the side of the block the user actually clicked.
+    const rawPos = edge === "end" && node ? pos + node.nodeSize - 1 : pos + 1;
+    const focusPos = Math.max(1, Math.min(rawPos, doc.content.size));
+    const tr = editor.state.tr.setSelection(
+      TextSelection.near(doc.resolve(focusPos), edge === "end" ? -1 : 1)
+    );
     editor.view.dispatch(tr);
     editor.view.focus();
   };
@@ -635,7 +684,12 @@ function FormEditorContent() {
     const lastBlock = blockEls[blockEls.length - 1];
     if (lastBlock) {
       const lastRect = lastBlock.getBoundingClientRect();
-      if (e.clientY > lastRect.bottom + 4) {
+      // Question blocks carry a 28px bottom margin. A 4px threshold treated a
+      // click inside that margin — visually still on the block — as "empty area
+      // below the form" and appended a paragraph, so the next keystroke landed
+      // on a new line. Measure the real margin instead of guessing.
+      const lastMarginBottom = parseFloat(window.getComputedStyle(lastBlock).marginBottom) || 0;
+      if (e.clientY > lastRect.bottom + lastMarginBottom) {
         const lastDocBlock = getLastTopLevelBlock();
         if (lastDocBlock?.isEmptyTextBlock) {
           focusTextBlockAt(lastDocBlock.pos);
@@ -665,7 +719,9 @@ function FormEditorContent() {
 
     if (nearestBlock) {
       const pos = editor.view.posAtDOM(nearestBlock, 0);
-      focusTextBlockAt(pos);
+      const rect = nearestBlock.getBoundingClientRect();
+      // Clicking under a block should continue at its end, not jump to its start.
+      focusTextBlockAt(pos, e.clientY > rect.top + rect.height / 2 ? "end" : "start");
       return;
     }
 
@@ -677,8 +733,8 @@ function FormEditorContent() {
 
   const loadVersionHistory = async () => {
     if (!formId) return;
-    const { data } = await supabase.from('form_versions').select('version, created_at, content, title').eq('form_id', formId).order('version', { ascending: false });
-    if (data) setVersionHistory(data);
+    const result = await apiGet<{ versions: any[] }>(`/api/forms/${formId}/versions`);
+    if (result.ok && result.data) setVersionHistory(result.data.versions);
   };
 
   const handleLoadVersion = (versionData: any) => {
@@ -689,46 +745,56 @@ function FormEditorContent() {
   };
 
   return (
-    <div className={`min-h-screen w-screen relative ${menuOpen ? 'editor-menu-open' : ''}`} onClick={handleEmptyAreaClick} onMouseMove={() => { if (isKeyboardActive) setIsKeyboardActive(false); }}>
+    <div className={`min-h-screen w-full relative ${menuOpen ? 'editor-menu-open' : ''}`} onClick={handleEmptyAreaClick} onMouseMove={() => { if (isKeyboardActive) setIsKeyboardActive(false); }}>
       <div className="print:hidden">
         {/* Top Navigation Bar */}
-        <div className="fixed top-0 left-0 right-0 h-14 bg-white/70 backdrop-blur-xl border-b border-zinc-200/60 z-[100] px-6 flex items-center justify-between transition-all duration-200">
-          <div className="flex items-center gap-6">
-            <Link href={userId ? "/dashboard" : "/"} className={`flex items-center gap-2 ${userId ? 'group/logo' : ''}`}>
-              <div className={`w-6 h-6 bg-gradient-to-br from-zinc-800 to-zinc-600 rounded flex items-center justify-center shadow-sm transition-all duration-200 ${userId ? 'group-hover/logo:from-zinc-700 group-hover/logo:to-zinc-500' : ''}`}>
+        <div className="fixed top-0 left-0 right-0 h-14 bg-white/80 backdrop-blur-xl border-b border-zinc-200/60 z-[100] px-1.5 sm:px-4 lg:px-6 flex items-center justify-between gap-1.5 sm:gap-2 transition-all duration-200">
+          <div className="flex items-center min-w-0">
+            <Link href={userId ? "/dashboard" : "/"} className={`flex items-center gap-2 min-w-0 ${userId ? 'group/logo' : ''}`} aria-label={userId ? "Back to dashboard" : "FieldTally home"}>
+              <div className={`w-6 h-6 shrink-0 bg-gradient-to-br from-zinc-800 to-zinc-600 rounded flex items-center justify-center shadow-sm transition-all duration-200 ${userId ? 'group-hover/logo:from-zinc-700 group-hover/logo:to-zinc-500' : ''}`}>
                 <span className={`text-white text-xs font-bold tracking-tighter block ${userId ? 'group-hover/logo:hidden' : ''}`}>FT</span>
                 {userId && <ChevronLeft className="w-4 h-4 text-white hidden group-hover/logo:block" />}
               </div>
-              <span className={`font-semibold text-zinc-800 tracking-tight transition-colors duration-200 block ${userId ? 'group-hover/logo:hidden' : ''}`}>FieldTally</span>
-              {userId && <span className="font-semibold text-zinc-500 tracking-tight transition-colors duration-200 hidden group-hover/logo:block text-sm">Dashboard</span>}
+              {/* The wordmark is the first thing to go when space is tight. */}
+              <span className={`hidden sm:block font-semibold text-zinc-800 tracking-tight truncate transition-colors duration-200 ${userId ? 'group-hover/logo:hidden' : ''}`}>FieldTally</span>
+              {userId && <span className="font-semibold text-zinc-500 tracking-tight transition-colors duration-200 hidden sm:group-hover/logo:block text-sm truncate">Dashboard</span>}
             </Link>
           </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => { if (editorRef.current) saveForm(editorRef.current.getJSON()); }}
-              className="p-1.5 text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 rounded-lg transition-colors cursor-pointer mr-1"
-              title={saveStatus === 'saving' ? "Saving..." : saveStatus === 'saved' ? "Saved" : saveStatus === 'error' ? "Error saving" : "Save draft"}
-            >
-              {saveStatus === 'saving' && <CloudUpload className="w-5 h-5 text-blue-500 animate-pulse" />}
-              {saveStatus === 'saved' && <CloudCheck className="w-5 h-5 text-green-500 hover:text-green-600" />}
-              {saveStatus === 'error' && <CloudOff className="w-5 h-5 text-red-500 hover:text-red-800" />}
-              {saveStatus === 'idle' && <CloudCheck className="w-5 h-5 text-zinc-400 hover:text-zinc-800" />}
-            </button>
+          <div className="flex items-center gap-1 sm:gap-2 lg:gap-2.5 shrink-0">
+            {(() => {
+              const saveLabel = saveStatus === 'saving' ? "Saving…" : saveStatus === 'saved' ? "All changes saved" : saveStatus === 'error' ? "Couldn't save — click to retry" : "Save draft";
+              return (
+                <Tooltip content={saveLabel}>
+                  <button
+                    onClick={() => { if (editorRef.current) saveForm(editorRef.current.getJSON()); }}
+                    className="icon-btn inline-flex text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100"
+                    aria-label={saveLabel}
+                  >
+                    {saveStatus === 'saving' && <CloudUpload className="w-5 h-5 text-blue-500 animate-pulse" />}
+                    {saveStatus === 'saved' && <CloudCheck className="w-5 h-5 text-emerald-500" />}
+                    {saveStatus === 'error' && <CloudOff className="w-5 h-5 text-red-500" />}
+                    {saveStatus === 'idle' && <CloudCheck className="w-5 h-5 text-zinc-400" />}
+                  </button>
+                </Tooltip>
+              );
+            })()}
 
             {formVersion !== null && (
-              <span className="text-xs font-medium text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded-full border border-zinc-200">
+              <span className="hidden sm:inline-block text-xs font-medium text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded-full border border-zinc-200 shrink-0">
                 v{formVersion}
               </span>
             )}
 
             {formId && formVersion !== null && (
               <Popover.Root open={showHistory} onOpenChange={(open) => { setShowHistory(open); if (open) loadVersionHistory(); }}>
-                <Popover.Trigger asChild>
-                  <button className="p-1.5 text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 rounded-lg transition-colors" title="Version History">
-                    <History className="w-5 h-5" />
-                  </button>
-                </Popover.Trigger>
+                <Tooltip content="Version history">
+                  <Popover.Trigger asChild>
+                    <button className="icon-btn hidden md:inline-flex text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100" aria-label="Version history">
+                      <History className="w-5 h-5" />
+                    </button>
+                  </Popover.Trigger>
+                </Tooltip>
                 <Popover.Content align="center" sideOffset={8} className="w-64 p-2 rounded-xl border border-zinc-200 bg-white shadow-xl z-[150] outline-none max-h-80 overflow-y-auto">
                   <div className="px-3 py-2 border-b border-zinc-100 mb-2">
                     <p className="text-sm font-semibold text-zinc-900">Version History</p>
@@ -749,35 +815,40 @@ function FormEditorContent() {
 
 
 
-            <div className="h-4 w-px bg-zinc-300 mx-1"></div>
+            <div className="hidden sm:block h-5 w-px bg-zinc-200" />
 
-            <button
-              onClick={() => setIsAiChatOpen(!isAiChatOpen)}
-              className={`px-3 py-1 text-sm font-medium transition-all rounded-lg flex items-center gap-1.5 cursor-pointer border ${
-                isAiChatOpen
-                  ? "bg-blue-50 border-blue-200 text-blue-600"
-                  : "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-sm border-transparent hover:shadow"
-              }`}
-              title="Open AI Form Assistant"
-            >
-              <Sparkles size={14} className={isAiChatOpen ? "" : "animate-pulse"} />
-              <span>AI Assistant</span>
-            </button>
+            <Tooltip content={isAiChatOpen ? "Close AI assistant" : "AI assistant"}>
+              <button
+                onClick={() => setIsAiChatOpen(!isAiChatOpen)}
+                aria-label={isAiChatOpen ? "Close AI assistant" : "Open AI assistant"}
+                aria-pressed={isAiChatOpen}
+                /* Neutral surface with a blue icon: Publish is the toolbar's one
+                   primary action, so nothing else should compete with solid blue. */
+                className={`icon-btn inline-flex border ${
+                  isAiChatOpen
+                    ? "bg-blue-50 border-blue-200 text-blue-600"
+                    : "bg-zinc-100 border-zinc-200 text-blue-600 hover:bg-zinc-200"
+                }`}
+              >
+                <Sparkles size={16} />
+              </button>
+            </Tooltip>
 
             <Popover.Root>
-              <Popover.Trigger asChild>
-                <button
-                  className={`px-3 py-1 text-sm font-medium transition-all rounded-lg flex items-center gap-1.5 cursor-pointer border ${
-                    quizMode
-                      ? "bg-emerald-50 border-emerald-200 text-emerald-700 shadow-sm"
-                      : "bg-zinc-100 border-zinc-200 text-zinc-600 hover:bg-zinc-200"
-                  }`}
-                  title="Quiz Settings"
-                >
-                  <Trophy size={14} className={quizMode ? "text-emerald-600" : "text-zinc-400"} />
-                  <span>Quiz Settings</span>
-                </button>
-              </Popover.Trigger>
+              <Tooltip content={quizMode ? "Quiz settings (quiz mode on)" : "Quiz settings"}>
+                <Popover.Trigger asChild>
+                  <button
+                    aria-label="Quiz settings"
+                    className={`icon-btn inline-flex border ${
+                      quizMode
+                        ? "bg-emerald-50 border-emerald-200 text-emerald-700 shadow-sm"
+                        : "bg-zinc-100 border-zinc-200 text-zinc-600 hover:bg-zinc-200"
+                    }`}
+                  >
+                    <Trophy size={16} className={quizMode ? "text-emerald-600" : "text-zinc-500"} />
+                  </button>
+                </Popover.Trigger>
+              </Tooltip>
               <Popover.Content align="center" sideOffset={8} className="w-80 p-4 rounded-xl border border-zinc-200 bg-white shadow-xl z-[150] outline-none">
                 <div className="flex flex-col gap-4">
                   <div>
@@ -822,30 +893,35 @@ function FormEditorContent() {
               </Popover.Content>
             </Popover.Root>
 
-            <button
-              onClick={handleSubmit}
-              className="px-3 py-1 text-sm font-medium text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors cursor-pointer"
-            >
-              Preview
-            </button>
+            <Tooltip content="Preview form">
+              <button
+                onClick={handleSubmit}
+                aria-label="Preview form"
+                className="icon-btn inline-flex text-zinc-600 bg-zinc-100 hover:bg-zinc-200"
+              >
+                <Eye size={16} />
+              </button>
+            </Tooltip>
 
-            <button
-              onClick={handleExportPDF}
-              className="px-3 py-1 text-sm font-medium text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
-              title="Export form to PDF"
-            >
-              <FileDown size={14} />
-              <span>Export PDF</span>
-            </button>
+            <Tooltip content="Export as PDF">
+              <button
+                onClick={handleExportPDF}
+                aria-label="Export form as PDF"
+                className="icon-btn hidden lg:inline-flex text-zinc-600 bg-zinc-100 hover:bg-zinc-200"
+              >
+                <FileDown size={16} />
+              </button>
+            </Tooltip>
 
             {formId && userId && (
               <Popover.Root>
-                <Popover.Trigger asChild>
-                  <button className="px-3 py-1 text-sm font-medium text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer animate-in fade-in" title="Share and Access Settings">
-                    <Share2 size={14} />
-                    <span>Share</span>
-                  </button>
-                </Popover.Trigger>
+                <Tooltip content="Share & access">
+                  <Popover.Trigger asChild>
+                    <button aria-label="Share and access settings" className="icon-btn inline-flex text-zinc-600 bg-zinc-100 hover:bg-zinc-200 animate-in fade-in">
+                      <Share2 size={16} />
+                    </button>
+                  </Popover.Trigger>
+                </Tooltip>
                 <Popover.Content align="end" sideOffset={8} className="w-80 p-4 rounded-xl border border-zinc-200 bg-white shadow-xl z-[150] outline-none">
                   <div className="flex flex-col gap-4">
                     <div>
@@ -873,7 +949,7 @@ function FormEditorContent() {
                           className="px-2 py-1 text-xs font-medium text-zinc-600 bg-zinc-100 hover:bg-zinc-200 border border-zinc-200/60 rounded-lg transition-colors flex items-center justify-center shrink-0"
                           title="Copy submission link"
                         >
-                          {copiedUrl ? <Check size={14} className="text-green-600" /> : <Copy size={14} />}
+                          {copiedUrl ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
                         </button>
                       </div>
                     </div>
@@ -1063,16 +1139,46 @@ function FormEditorContent() {
               </Popover.Root>
             )}
 
-            <div className="flex items-center">
+            {/* Overflow for the actions that don't fit a narrow toolbar. */}
+            <Popover.Root>
+              <Tooltip content="More actions">
+                <Popover.Trigger asChild>
+                  <button aria-label="More actions" className="icon-btn inline-flex lg:hidden text-zinc-600 bg-zinc-100 hover:bg-zinc-200">
+                    <MoreHorizontal size={16} />
+                  </button>
+                </Popover.Trigger>
+              </Tooltip>
+              <Popover.Content align="end" sideOffset={8} className="w-52 p-1.5 rounded-xl border border-zinc-200 bg-white shadow-xl z-[150] outline-none">
+                <button
+                  onClick={handleExportPDF}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 rounded-lg transition-colors"
+                >
+                  <FileDown size={16} className="text-zinc-400 shrink-0" />
+                  Export as PDF
+                </button>
+                {formId && formVersion !== null && (
+                  <button
+                    onClick={() => { setShowHistory(true); loadVersionHistory(); }}
+                    className="w-full md:hidden flex items-center gap-2.5 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 rounded-lg transition-colors"
+                  >
+                    <History size={16} className="text-zinc-400 shrink-0" />
+                    Version history
+                  </button>
+                )}
+              </Popover.Content>
+            </Popover.Root>
+
+            <Tooltip content="Publish form">
               <button
                 onClick={handlePublish}
-                className="px-4 py-1 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 shadow-sm transition-colors rounded-lg"
+                aria-label="Publish form"
+                className="icon-btn inline-flex text-white bg-blue-600 hover:bg-blue-500 shadow-sm"
               >
-                Publish
+                <Upload size={16} />
               </button>
-            </div>
+            </Tooltip>
 
-            <div className="w-px h-4 bg-zinc-300 mx-2"></div>
+            <div className="hidden sm:block w-px h-5 bg-zinc-200" />
 
             {userId ? (
               <Popover.Root>
@@ -1101,10 +1207,10 @@ function FormEditorContent() {
               </Popover.Root>
             ) : (
               <>
-                <Link href="/login" className="text-sm font-medium text-zinc-600 hover:text-zinc-900 transition-colors">
+                <Link href="/login" className="hidden sm:inline-block text-sm font-medium text-zinc-600 hover:text-zinc-900 transition-colors whitespace-nowrap px-2">
                   Log In
                 </Link>
-                <Link href="/signup" className="text-sm font-medium px-3 py-1.5 border border-zinc-200 rounded-lg hover:bg-zinc-50 transition-colors">
+                <Link href="/signup" className="text-sm font-medium px-2.5 sm:px-3 py-1.5 border border-zinc-200 rounded-lg hover:bg-zinc-50 transition-colors whitespace-nowrap">
                   Sign Up
                 </Link>
               </>
@@ -1112,7 +1218,17 @@ function FormEditorContent() {
           </div>
         </div>
 
-        <div className={`pt-36 pb-24 max-w-4xl mx-auto transition-all duration-300 ${isAiChatOpen ? 'mr-[440px] ml-28 max-w-2xl' : 'px-12'}`}>
+        {/* Left padding is sized to clear the fixed drag handle, which globals.css
+            pins into the gutter below 1024px: ~44px for the stacked phone layout,
+            ~96px for the horizontal one. The AI panel is an overlay on small
+            screens and only reserves side margin once there is room for it. */}
+        <div
+          className={`pt-24 sm:pt-28 lg:pt-36 pb-24 max-w-4xl mx-auto transition-all duration-300 ${
+            isAiChatOpen
+              ? 'pl-11 pr-4 md:pl-24 md:pr-8 xl:mr-[440px] xl:ml-28 xl:pl-0 xl:pr-0 xl:max-w-2xl'
+              : 'pl-11 pr-4 md:pl-24 md:pr-8 lg:px-12'
+          }`}
+        >
           {/* Custom drag handle injected into the DOM for GlobalDragHandle to use */}
           <div
             className={`custom-drag-handle gap-0.5 fixed z-50 bg-white ml-4 text-zinc-400 ${isKeyboardActive && !menuOpen ? 'hidden' : 'flex'}`}
@@ -1169,7 +1285,11 @@ function FormEditorContent() {
                 {activeNodeType && TURN_INTO_TARGETS[activeNodeType] && (
                   <div className="px-2 py-1.5 border-b border-zinc-100 mb-1">
                     <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
-                      {TURN_INTO_TARGETS[activeNodeType].label}
+                      {/* A searchable block reads as "Checkboxes"/"Multiple Choice" underneath;
+                          show what the user actually inserted. */}
+                      {isSearchable && SEARCHABLE_BLOCK_TYPES.has(activeNodeType)
+                        ? "Searchable Choice"
+                        : TURN_INTO_TARGETS[activeNodeType].label}
                     </span>
                   </div>
                 )}
@@ -1199,6 +1319,33 @@ function FormEditorContent() {
                         <Switch.Thumb className="block w-4 h-4 bg-white rounded-full transition-transform duration-100 translate-x-1 will-change-transform data-[state=checked]:translate-x-5 shadow-sm" />
                       </Switch.Root>
                     </div>
+
+                    {/* Searchable choice: pick between multi- and single-select.
+                        Swapping the node type is what Turn Into already does, and it
+                        carries over the options, id, required flag and searchable flag. */}
+                    {isSearchable && SEARCHABLE_BLOCK_TYPES.has(activeNodeType || "") && (
+                      <div className="flex items-center justify-between px-2 py-2">
+                        <div className="flex flex-col">
+                          <span className="text-zinc-700">Multiple answers</span>
+                          <span className="text-[10px] text-zinc-400">
+                            {activeNodeType === "checkboxBlock" ? "Pick several options" : "Pick one option"}
+                          </span>
+                        </div>
+                        <Switch.Root
+                          checked={activeNodeType === "checkboxBlock"}
+                          onCheckedChange={(checked) => {
+                            const targetKey = checked ? "checkboxBlock" : "multipleChoiceBlock";
+                            if (activeNodePos !== null && editorRef.current) {
+                              turnBlockInto(editorRef.current, activeNodePos, targetKey);
+                              setActiveNodeType(targetKey);
+                            }
+                          }}
+                          className="w-10 h-6 bg-zinc-200 rounded-full relative data-[state=checked]:bg-blue-500 outline-none cursor-pointer shadow-inner transition-colors"
+                        >
+                          <Switch.Thumb className="block w-4 h-4 bg-white rounded-full transition-transform duration-100 translate-x-1 will-change-transform data-[state=checked]:translate-x-5 shadow-sm" />
+                        </Switch.Root>
+                      </div>
+                    )}
 
                     <div className="h-px bg-zinc-100 my-1 mx-2" />
 
@@ -1655,7 +1802,7 @@ function FormEditorContent() {
         {publishUrl && (
           <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setPublishUrl(null)}>
             <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
-              <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
+              <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-4">
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>

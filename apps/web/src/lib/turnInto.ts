@@ -178,6 +178,8 @@ export function turnBlockInto(editor: TiptapEditor, pos: number, targetKey: stri
   if (node.attrs.id) sharedAttrs.id = node.attrs.id;
   if (node.attrs.logic) sharedAttrs.logic = node.attrs.logic;
   if (node.attrs.placeholder) sharedAttrs.placeholder = node.attrs.placeholder;
+  // Keep the filter box on when switching between single- and multi-select.
+  if (node.attrs.searchable) sharedAttrs.searchable = node.attrs.searchable;
 
   let newContent: any;
   if (target.group === "basic") {

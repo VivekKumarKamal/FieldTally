@@ -180,7 +180,7 @@ export default function ChatPanel({ isOpen, onClose, onApplySchema, currentFormT
   return (
     <div
       data-ai-panel="true"
-      className={`fixed top-[72px] right-4 h-[calc(100vh-5.5rem)] w-[400px] bg-white border border-zinc-200 flex flex-col rounded-2xl z-[90] transition-all duration-300 ease-in-out transform ${
+      className={`fixed top-[64px] sm:top-[72px] right-2 sm:right-4 left-2 sm:left-auto h-[calc(100dvh-5rem)] sm:h-[calc(100dvh-5.5rem)] w-auto sm:w-[min(400px,calc(100vw-2rem))] bg-white border border-zinc-200 flex flex-col rounded-2xl z-[90] transition-all duration-300 ease-in-out transform ${
         isOpen ? "translate-x-0" : "translate-x-[calc(100%+2rem)] pointer-events-none"
       }`}
     >
@@ -343,7 +343,7 @@ export default function ChatPanel({ isOpen, onClose, onApplySchema, currentFormT
                       disabled={applied}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all active:scale-[0.98] cursor-pointer ${
                         applied
-                          ? "bg-green-50 border border-green-200 text-green-600"
+                          ? "bg-emerald-50 border border-emerald-200 text-emerald-600"
                           : "bg-blue-600 hover:bg-blue-500 text-white"
                       }`}
                     >

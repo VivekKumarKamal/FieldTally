@@ -2,10 +2,11 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import type { ElementType, ReactNode } from "react";
-import { Send, CheckCircle2, MapPin, RefreshCw, Upload, Loader2, Image, PenTool, Trash } from "lucide-react";
+import { Send, CheckCircle2, MapPin, RefreshCw, Upload, Loader2, Image, PenTool, Trash, Search, X } from "lucide-react";
 import { useParams } from "next/navigation";
 import { supabase } from "../lib/supabase";
 import { evaluateLogic, LogicBlockNode } from "../lib/logic";
+import { gradeQuiz } from "../lib/quiz";
 
 // ─── Text rendering helpers ──────────────────────────────
 
@@ -90,96 +91,11 @@ type FormRendererProps = {
   schema: any;
   title?: string;
   progressBarOffset?: number | string;
-  /** Called with the final answers map when the user submits. */
-  onSubmit?: (answers: Record<string, any>) => void;
+  /** Called with the final answers. May be async; the success screen waits for it. */
+  onSubmit?: (answers: Record<string, any>) => void | Promise<void>;
   isPrinting?: boolean;
   readOnly?: boolean;
 };
-
-function gradeQuiz(schema: any, answers: Record<string, any>) {
-  if (!schema?.content) return null;
-
-  let totalPoints = 0;
-  let score = 0;
-  let totalCount = 0;
-  let correctCount = 0;
-
-  const details: Record<string, { correct: boolean; pointsEarned: number; maxPoints: number }> = {};
-
-  for (const node of schema.content) {
-    const id = node.attrs?.id;
-    if (!id || node.type === "logicBlock") continue;
-
-    // Check if correct answer is configured
-    const correctAnswer = node.attrs?.correctAnswer;
-    if (correctAnswer === undefined || correctAnswer === null) continue;
-
-    const maxPoints = node.attrs?.quizPoints ?? 1;
-    totalPoints += maxPoints;
-    totalCount++;
-
-    const val = answers[id];
-    let isCorrect = false;
-    let pointsEarned = 0;
-
-    if (node.type === "multipleChoiceBlock") {
-      isCorrect = val === correctAnswer;
-      pointsEarned = isCorrect ? maxPoints : 0;
-      if (isCorrect) correctCount++;
-    } else if (node.type === "checkboxBlock") {
-      const correctList: string[] = Array.isArray(correctAnswer) ? correctAnswer : [];
-      const selectedList: string[] = Array.isArray(val) ? val : [];
-
-      if (selectedList.length === 0) {
-        isCorrect = correctList.length === 0;
-        pointsEarned = isCorrect ? maxPoints : 0;
-        if (isCorrect) correctCount++;
-      } else {
-        const hasWrongSelection = selectedList.some(opt => !correctList.includes(opt));
-        if (hasWrongSelection) {
-          isCorrect = false;
-          pointsEarned = 0;
-        } else {
-          const selectedCorrectCount = selectedList.filter(opt => correctList.includes(opt)).length;
-          pointsEarned = correctList.length > 0 ? (selectedCorrectCount / correctList.length) * maxPoints : maxPoints;
-          isCorrect = selectedCorrectCount === correctList.length;
-          if (isCorrect) correctCount++;
-        }
-      }
-    } else if (node.type === "numberAnswerBlock") {
-      const numVal = val !== "" && val !== null ? Number(val) : null;
-      if (numVal !== null && !isNaN(numVal)) {
-        if (correctAnswer.type === "exact") {
-          isCorrect = numVal === correctAnswer.value;
-        } else if (correctAnswer.type === "range") {
-          const min = correctAnswer.min !== undefined ? correctAnswer.min : -Infinity;
-          const max = correctAnswer.max !== undefined ? correctAnswer.max : Infinity;
-          isCorrect = numVal >= min && numVal <= max;
-        }
-      }
-      pointsEarned = isCorrect ? maxPoints : 0;
-      if (isCorrect) correctCount++;
-    }
-
-    details[id] = {
-      correct: isCorrect,
-      pointsEarned,
-      maxPoints
-    };
-    score += pointsEarned;
-  }
-
-  const percentage = totalPoints > 0 ? Math.round((score / totalPoints) * 100) : 0;
-
-  return {
-    score,
-    totalPoints,
-    percentage,
-    correctCount,
-    totalCount,
-    details
-  };
-}
 
 // ─── FormRenderer ────────────────────────────────────────
 
@@ -337,7 +253,7 @@ export default function FormRenderer({ schema, title, progressBarOffset, onSubmi
     });
   }, []);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const newErrors: Record<string, string> = {};
     if (schema?.content) {
       for (const node of schema.content) {
@@ -391,13 +307,22 @@ export default function FormRenderer({ schema, title, progressBarOffset, onSubmi
     }
     let answersToSubmit = { ...answers };
     if (schema?.attrs?.quizMode === true) {
+      // Only meaningful where the schema still carries the answer key (the
+      // editor's preview). A live taker gets a stripped schema and the real
+      // score comes back from the server, which is what gets stored.
       const result = gradeQuiz(schema, answers);
-      setQuizResult(result);
+      if (result && result.totalPoints > 0) setQuizResult(result);
       answersToSubmit.__quiz_result = result;
     }
 
-    if (onSubmit) onSubmit(answersToSubmit);
-    setSubmitted(true);
+    // Wait for the handler so the success screen appears only once the response
+    // is actually saved. A handler that throws has already told the user why.
+    try {
+      if (onSubmit) await onSubmit(answersToSubmit);
+      setSubmitted(true);
+    } catch {
+      // Left on the form so the answers are not lost.
+    }
   };
 
   // ─── Progress calculation ───
@@ -526,6 +451,52 @@ export default function FormRenderer({ schema, title, progressBarOffset, onSubmi
 
 // ─── Universal Node Renderer ─────────────────────────────
 
+/**
+ * Narrow a choice block's options to those matching the typed filter.
+ *
+ * Anything already selected stays in the list even when it doesn't match, so a
+ * user can't lose track of a pick by typing a filter that hides it.
+ */
+export function filterOptions(options: any[], query: string, isSelected: (text: string) => boolean): any[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return options;
+  return options.filter((opt) => {
+    const text = extractText(opt.content).trim();
+    return text.toLowerCase().includes(q) || isSelected(text);
+  });
+}
+
+function OptionSearchField({ value, onChange, disabled }: {
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="relative my-2">
+      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+      <input
+        type="text"
+        role="searchbox"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        placeholder="Type to filter options…"
+        className="w-full pl-9 pr-8 py-2 text-sm border border-zinc-200 rounded-lg outline-none focus:border-zinc-400 focus:ring-2 focus:ring-zinc-100 disabled:bg-zinc-50 disabled:cursor-not-allowed transition-all"
+      />
+      {value && !disabled && (
+        <button
+          type="button"
+          aria-label="Clear filter"
+          onClick={() => onChange("")}
+          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-zinc-600 rounded"
+        >
+          <X size={14} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors, visibility, isPrinting = false, gpsState, captureLocationForField, formId, uploadState, handleImageUpload, readOnly = false }: {
   node: any; answers: Record<string, any>; updateAnswer: (id: string, v: any) => void;
   toggleCheckbox: (id: string, opt: string) => void; errors: Record<string, string>;
@@ -538,6 +509,10 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
   handleImageUpload?: (id: string, file: File, formId: string) => void;
   readOnly?: boolean;
 }) {
+  // Filter text for searchable choice blocks. Declared unconditionally to keep
+  // hook order stable; ignored by every other node type.
+  const [optionQuery, setOptionQuery] = useState("");
+
   const id = node.attrs?.id;
 
   // Logic blocks: hidden, logic runs via parent
@@ -621,7 +596,7 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
           {required && <span className="required-badge">*</span>}
         </div>
         {isPrinting && placeholder && (
-          <p className="text-xs text-zinc-400 italic mt-1 mb-1.5">
+          <p className="text-xs text-zinc-500 italic mt-1 mb-1.5">
             Note: {placeholder}
           </p>
         )}
@@ -637,7 +612,7 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
             style={{ color: "#3f3f46", paddingRight: (!isPrinting && maxLen) ? "3rem" : undefined }}
           />
           {!isPrinting && maxLen && (
-            <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: "0.7rem", color: currentVal.length >= maxLen ? "#ef4444" : "#a1a1aa" }}>
+            <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: "0.7rem", color: currentVal.length >= maxLen ? "#ef4444" : "#71717a" }}>
               {currentVal.length}/{maxLen}
             </span>
           )}
@@ -661,7 +636,7 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
           {required && <span className="required-badge">*</span>}
         </div>
         {isPrinting && placeholder && (
-          <p className="text-xs text-zinc-400 italic mt-1 mb-1.5">
+          <p className="text-xs text-zinc-500 italic mt-1 mb-1.5">
             Note: {placeholder}
           </p>
         )}
@@ -710,7 +685,7 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
           {required && <span className="required-badge">*</span>}
         </div>
         {isPrinting && placeholder && (
-          <p className="text-xs text-zinc-400 italic mt-1 mb-1.5">
+          <p className="text-xs text-zinc-500 italic mt-1 mb-1.5">
             Note: {placeholder}
           </p>
         )}
@@ -742,7 +717,7 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
           {required && <span className="required-badge">*</span>}
         </div>
         {isPrinting && placeholder && (
-          <p className="text-xs text-zinc-400 italic mt-1 mb-1.5">
+          <p className="text-xs text-zinc-500 italic mt-1 mb-1.5">
             Note: {placeholder}
           </p>
         )}
@@ -765,14 +740,25 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
   // ── Checkbox block ──
   if (node.type === "checkboxBlock") {
     const titleNode = node.content?.find((c: any) => c.type === "checkboxTitle");
-    const optionNodes = node.content?.filter((c: any) => c.type === "checkboxOption") || [];
+    const allOptions = node.content?.filter((c: any) => c.type === "checkboxOption") || [];
     const selected: string[] = answers[id] || [];
+    // Printing shows the full list — a filter box is meaningless on paper.
+    const searchable = node.attrs?.searchable === true && !isPrinting;
+    const optionNodes = searchable
+      ? filterOptions(allOptions, optionQuery, (t) => selected.includes(t))
+      : allOptions;
     return (
       <div id={id ? `field-${id}` : undefined} data-type="checkbox-block" data-required={required ? "true" : undefined}>
         <div data-type="checkbox-title">
           {renderInlineContent(titleNode?.content)}
           {required && <span className="required-badge ml-2">*</span>}
         </div>
+        {searchable && (
+          <OptionSearchField value={optionQuery} onChange={setOptionQuery} disabled={readOnly} />
+        )}
+        {searchable && optionNodes.length === 0 && (
+          <p className="text-sm text-zinc-500 py-2">No options match “{optionQuery}”.</p>
+        )}
         {optionNodes.map((opt: any, i: number) => {
           const text = extractText(opt.content);
           if (!text.trim() && !isPrinting) return null;
@@ -795,14 +781,25 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
   // ── Multiple choice block ──
   if (node.type === "multipleChoiceBlock") {
     const titleNode = node.content?.find((c: any) => c.type === "multipleChoiceTitle");
-    const optionNodes = node.content?.filter((c: any) => c.type === "multipleChoiceOption") || [];
+    const allOptions = node.content?.filter((c: any) => c.type === "multipleChoiceOption") || [];
     const selected = answers[id] || "";
+    // Printing shows the full list — a filter box is meaningless on paper.
+    const searchable = node.attrs?.searchable === true && !isPrinting;
+    const optionNodes = searchable
+      ? filterOptions(allOptions, optionQuery, (t) => selected === t)
+      : allOptions;
     return (
       <div id={id ? `field-${id}` : undefined} data-type="multiple-choice-block" data-required={required ? "true" : undefined}>
         <div data-type="multiple-choice-title">
           {renderInlineContent(titleNode?.content)}
           {required && <span className="required-badge ml-2">*</span>}
         </div>
+        {searchable && (
+          <OptionSearchField value={optionQuery} onChange={setOptionQuery} disabled={readOnly} />
+        )}
+        {searchable && optionNodes.length === 0 && (
+          <p className="text-sm text-zinc-500 py-2">No options match “{optionQuery}”.</p>
+        )}
         {optionNodes.map((opt: any, i: number) => {
           const text = extractText(opt.content);
           if (!text.trim() && !isPrinting) return null;
@@ -1208,7 +1205,7 @@ export function SignaturePad({ id, formId, value, onChange, hasError }: Signatur
         <div className="flex flex-col items-center gap-3">
           <div className="w-full aspect-[5/3] bg-zinc-50 border border-zinc-100 rounded-lg flex items-center justify-center p-2 relative overflow-hidden select-none">
             <img src={value} alt="Signature" className="h-full max-w-full object-contain" />
-            <span className="absolute top-2 right-2 text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full border border-green-200">
+            <span className="absolute top-2 right-2 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
               Saved
             </span>
           </div>

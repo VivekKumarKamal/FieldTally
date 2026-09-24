@@ -777,3 +777,108 @@ body {
     color: #18181b !important;
   }
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   Responsive + accessibility layer
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* The block drag handle is positioned `fixed` by GlobalDragHandle at
+   (blockLeft - dragHandleWidth). Once the editor column stops being centred —
+   roughly below 1024px — that lands at a negative x and the delete/add/drag
+   buttons are clipped off the left edge of the screen. Pin it into the gutter
+   instead; the editor's own left padding (set in create-form/page.tsx) is sized
+   to clear it at each breakpoint. */
+@media (max-width: 1023px) {
+  .custom-drag-handle {
+    left: 0.75rem !important;
+    margin-left: 0 !important;
+  }
+}
+
+/* On phones the three buttons in a row need ~76px of gutter, which is a fifth
+   of the screen. Stacking them reclaims that width for the form itself. */
+@media (max-width: 767px) {
+  .custom-drag-handle {
+    left: 0.25rem !important;
+    flex-direction: column;
+  }
+}
+
+/* 24×24 is under every platform's touch minimum. Grow the hit area on touch
+   input only, so mouse users keep the compact handle. */
+@media (pointer: coarse) {
+  .custom-drag-handle button {
+    min-width: 2.25rem;
+    min-height: 2.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* 2.5rem title overflows a 375px viewport. */
+.form-title-input {
+  font-size: clamp(1.75rem, 6vw, 2.5rem);
+}
+
+/* Keyboard focus must stay visible — several controls set `outline: none`. */
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+  border-radius: 0.375rem;
+}
+
+/* Nothing should ever scroll the page sideways. */
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Toolbar icon button. 36px for a mouse, 44px on touch input where the
+   platform minimum applies. */
+/* In @layer components so Tailwind's utilities layer always wins — unlayered CSS
+   beats every layered rule regardless of specificity, which would make
+   `hidden lg:inline-flex` silently ineffective on these buttons.
+   Sets no `display` either; each button brings its own display utility. */
+@layer components {
+  .icon-btn {
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  @media (pointer: coarse) {
+    .icon-btn {
+      width: 2.75rem;
+      height: 2.75rem;
+    }
+  }
+}
+
+/* Answer rows are the main interaction on a published form and were 32px tall —
+   under the 44px touch minimum. The whole row is the target, so grow its padding
+   on touch input and on phone-width screens. */
+@media (pointer: coarse), (max-width: 640px) {
+  .form-renderer div[data-type="checkbox-option"],
+  .form-renderer div[data-type="multiple-choice-option"] {
+    padding-top: 0.625rem;
+    padding-bottom: 0.625rem;
+  }
+}

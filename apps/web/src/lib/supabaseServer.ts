@@ -1,72 +1,83 @@
 import { createClient } from "@supabase/supabase-js";
 import { Database } from "@fieldtally/database";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import type { EffectiveRole, FormAccessContext } from "./authz";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-anon-key";
 
-/**
- * Creates a server-side Supabase client. If a bearer token is present in the request's
- * Authorization header, the client is initialized with that token to respect Row-Level Security.
- */
-export function getSupabaseClient(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : null;
+export type ServerSupabaseClient = ReturnType<typeof createSupabaseClient>;
 
+function createSupabaseClient(token: string | null) {
   return createClient<Database>(supabaseUrl, supabaseAnonKey, {
     global: {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     },
-    auth: {
-      persistSession: false,
-    },
+    auth: { persistSession: false },
   });
 }
 
-/**
- * Retrieves the authenticated user using the request's bearer token.
- */
-export async function getAuthenticatedUser(req: NextRequest) {
+function bearerToken(req: NextRequest): string | null {
   const authHeader = req.headers.get("authorization");
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : null;
-  if (!token) return null;
+  return authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : null;
+}
 
-  const supabase = getSupabaseClient(req);
-  const { data: { user }, error } = await supabase.auth.getUser(token);
-  if (error || !user) {
-    return null;
-  }
-  return user;
+export interface RequestContext {
+  supabase: ServerSupabaseClient;
+  userId: string | null;
+  userEmail: string | null;
 }
 
 /**
- * Checks if the user has access to a specific form with the required role.
- * Role hierarchy: submitter < viewer < editor < owner
+ * Resolve the caller once per request: a Supabase client scoped to their token
+ * (so RLS still applies as a second line of defence) plus their identity.
+ *
+ * Previously each route built a client and separately verified the token, which
+ * meant two clients and two auth round-trips per request. This does it once.
  */
-export async function checkFormAccess(
-  supabase: ReturnType<typeof getSupabaseClient>,
+export async function getRequestContext(req: NextRequest): Promise<RequestContext> {
+  const token = bearerToken(req);
+  const supabase = createSupabaseClient(token);
+
+  if (!token) return { supabase, userId: null, userEmail: null };
+
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error || !data?.user) return { supabase, userId: null, userEmail: null };
+
+  return { supabase, userId: data.user.id, userEmail: data.user.email ?? null };
+}
+
+export interface ResolvedForm {
+  form: (FormAccessContext & { id: string }) | null;
+  role: EffectiveRole;
+  error?: string;
+}
+
+/**
+ * Fetch a form and work out the caller's effective role on it.
+ *
+ * This resolves *identity*, not permission — ask the predicates in `authz.ts`
+ * what the resulting role is allowed to do.
+ */
+export async function resolveFormAccess(
+  supabase: ServerSupabaseClient,
   formId: string,
-  userId: string | null,
-  requiredRole: "owner" | "editor" | "viewer" | "submitter" = "submitter"
-) {
-  // 1. Fetch form status and creator
-  const { data: form, error: formError } = await supabase
+  userId: string | null
+): Promise<ResolvedForm> {
+  const { data: form, error } = await supabase
     .from("forms")
     .select("id, status, access_open, created_by")
     .eq("id", formId)
-    .single();
+    .maybeSingle();
 
-  if (formError || !form) {
-    return { hasAccess: false, form: null, error: "Form not found or inaccessible." };
+  if (error || !form) {
+    return { form: null, role: "anonymous", error: "Form not found or inaccessible." };
   }
 
-  // 2. If user is form creator, they always have owner access
   if (userId && form.created_by === userId) {
-    return { hasAccess: true, form, role: "owner" };
+    return { form, role: "owner" };
   }
 
-  // 3. Fetch membership from form_members
-  let memberRole: string | null = null;
   if (userId) {
     const { data: member } = await supabase
       .from("form_members")
@@ -74,71 +85,56 @@ export async function checkFormAccess(
       .eq("form_id", formId)
       .eq("user_id", userId)
       .maybeSingle();
-    if (member) {
-      memberRole = member.role;
+
+    if (member?.role) {
+      return { form, role: member.role as EffectiveRole };
     }
   }
 
-  // 4. Role check
-  const rolesOrder = ["submitter", "viewer", "editor", "owner"];
-  const userRoleIndex = memberRole ? rolesOrder.indexOf(memberRole) : -1;
-  const requiredRoleIndex = rolesOrder.indexOf(requiredRole);
-
-  if (memberRole && userRoleIndex >= requiredRoleIndex) {
-    return { hasAccess: true, form, role: memberRole };
-  }
-
-  // 5. Check if form is open to public (access_open: true) and published
-  if (form.access_open && form.status === "published" && (requiredRole === "submitter" || requiredRole === "viewer")) {
-    // A user with viewer role explicitly cannot submit
-    if (requiredRole === "submitter" && memberRole === "viewer") {
-      return { hasAccess: false, form, error: "Viewers are not permitted to submit responses." };
-    }
-    return { hasAccess: true, form, role: memberRole || "anonymous" };
-  }
-
-  return { hasAccess: false, form, error: "Unauthorized access to this form." };
+  return { form, role: "anonymous" };
 }
 
+// ── Response helpers ──────────────────────────────────────
+
+export function jsonError(message: string, status: number) {
+  return NextResponse.json({ error: message }, { status });
+}
+
+export const unauthorized = (message = "Authentication required.") => jsonError(message, 401);
+export const forbidden = (message = "You do not have permission to do that.") => jsonError(message, 403);
+export const notFound = (message = "Not found.") => jsonError(message, 404);
+
 /**
- * Checks if the user has access to a specific submission.
- * - Original submitter can always read/update their own submission.
- * - Form owners/editors can read and update.
- * - Form viewers can read.
+ * Log the real cause server-side and return a generic message to the caller, so
+ * internal errors never leak database details into a client response.
  */
-export async function checkSubmissionAccess(
-  supabase: ReturnType<typeof getSupabaseClient>,
-  submissionId: string,
-  userId: string | null,
-  action: "read" | "update"
-) {
-  if (!userId) {
-    return { hasAccess: false, submission: null, error: "Authentication required to access submissions." };
+export function serverError(scope: string, err: unknown) {
+  console.error(`[${scope}]`, err instanceof Error ? err.message : err);
+  return jsonError("Internal server error", 500);
+}
+
+
+/** A published form schema large enough to be abuse rather than a form. */
+export const MAX_SCHEMA_BYTES = 1024 * 1024; // 1 MB
+
+/**
+ * Reject an oversized body before parsing it.
+ *
+ * Reads the declared Content-Length, which a hostile client can omit — the
+ * hosting platform enforces its own hard limit. This stops an authenticated
+ * user from parking arbitrarily large schemas in the database by accident or
+ * on purpose.
+ */
+export function bodyTooLarge(req: NextRequest, maxBytes: number): boolean {
+  const declared = parseInt(req.headers.get("content-length") || "0", 10);
+  return Number.isFinite(declared) && declared > maxBytes;
+}
+
+/** Parse a JSON body, returning null when it is absent or malformed. */
+export async function readJsonBody<T = any>(req: NextRequest): Promise<T | null> {
+  try {
+    return (await req.json()) as T;
+  } catch {
+    return null;
   }
-
-  // 1. Fetch submission
-  const { data: submission, error: subError } = await supabase
-    .from("submissions")
-    .select("*")
-    .eq("id", submissionId)
-    .single();
-
-  if (subError || !submission) {
-    return { hasAccess: false, submission: null, error: "Submission not found." };
-  }
-
-  // 2. If the user is the original submitter, they have access
-  if (submission.submitted_by === userId) {
-    return { hasAccess: true, submission };
-  }
-
-  // 3. Otherwise, check the user's role on the associated form
-  const requiredRole = action === "read" ? "viewer" : "editor";
-  const { hasAccess, error } = await checkFormAccess(supabase, submission.form_id, userId, requiredRole);
-
-  if (hasAccess) {
-    return { hasAccess: true, submission };
-  }
-
-  return { hasAccess: false, submission: null, error: error || "Unauthorized access to this submission." };
 }

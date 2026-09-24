@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { apiSend } from "./apiClient";
 
 export interface Template {
   id: string;
@@ -352,26 +352,26 @@ export async function createFormFromTemplate(template: Template, userId: string 
   const newFormId = crypto.randomUUID();
   const clonedSchema = getClonedTemplateSchema(template.schema);
   const now = new Date().toISOString();
+  const cleanTitle = template.title.replace(/^\d+\.\s*/, ""); // Strip complexity number prefix
 
   // Save to localStorage
   localStorage.setItem(`draft_schema_${newFormId}`, JSON.stringify({
     schema: clonedSchema,
-    title: template.title.replace(/^\d+\.\s*/, ""), // Strip complexity number prefix from title
+    title: cleanTitle,
     updated_at: now,
   }));
   localStorage.setItem("current_draft_form_id", newFormId);
 
-  // If logged in, save to Supabase
+  // If logged in, create the server-side row. Ownership is assigned from the
+  // caller's verified token, so `userId` here only decides whether to try.
   if (userId) {
-    try {
-      await supabase.from("forms").insert({
-        id: newFormId,
-        draft_schema: { title: template.title.replace(/^\d+\.\s*/, ""), content: clonedSchema },
-        created_by: userId,
-        updated_at: now,
-      });
-    } catch (err) {
-      console.error("Failed to insert template form in Supabase:", err);
+    const result = await apiSend("/api/forms", "POST", {
+      id: newFormId,
+      draft_schema: { title: cleanTitle, content: clonedSchema },
+    });
+    if (!result.ok) {
+      // Non-fatal: the draft still exists locally and will sync on next save.
+      console.error("Failed to create template form on the server:", result.error);
     }
   }
 

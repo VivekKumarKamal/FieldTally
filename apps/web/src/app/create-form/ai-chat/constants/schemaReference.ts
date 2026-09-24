@@ -8,6 +8,9 @@ QUESTION NODES:
 - numberAnswerBlock: { type, attrs: { id, required, placeholder }, content: [{type:"text",text:"..."}] }
 - multipleChoiceBlock: { type, attrs: { id, required }, content: [ {type:"multipleChoiceTitle", content:[{type:"text",text:"Question"}]}, {type:"multipleChoiceOption", content:[{type:"text",text:"Option text"}]}, ... ] }
 - checkboxBlock: same structure as multipleChoiceBlock but type:"checkboxBlock", "checkboxTitle", "checkboxOption"
+- Either choice block also accepts attrs.searchable (boolean). Set it to true when the question has
+  roughly 8+ options (countries, districts, equipment, species lists) so the respondent filters by
+  typing instead of scrolling. multipleChoiceBlock stays single-select; checkboxBlock stays multi-select.
 - dateAnswerBlock / timeAnswerBlock / emailAnswerBlock / phoneAnswerBlock / linkAnswerBlock: { type, attrs: { id, required }, content: [{type:"text",text:"..."}] }
 
 SPECIAL FIELDS (only include when context demands):

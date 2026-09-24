@@ -16,6 +16,14 @@ import {
   PieChart,
 } from "lucide-react";
 import { supabase } from "../../../../lib/supabase";
+import { apiGet } from "../../../../lib/apiClient";
+
+/** Rows fetched per request when pulling responses down. */
+const FETCH_PAGE_SIZE = 200;
+/** Ceiling on how many responses we hold in memory for one form. */
+const MAX_LOADED_SUBMISSIONS = 5000;
+/** Rows actually rendered at once — the table used to render every row. */
+const TABLE_PAGE_SIZE = 100;
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -228,6 +236,34 @@ function loadExcelJS(): Promise<any> {
   });
 }
 
+/**
+ * Fetch every referenced image once, a few at a time.
+ *
+ * The export used to `await fetch(...)` inside the cell loop, so a sheet with 500
+ * photos made 500 sequential round trips. Bounded concurrency keeps the browser
+ * from opening hundreds of sockets while still overlapping the waits.
+ */
+async function fetchImages(urls: string[], concurrency = 6): Promise<Map<string, ArrayBuffer>> {
+  const unique = [...new Set(urls)];
+  const results = new Map<string, ArrayBuffer>();
+  let cursor = 0;
+
+  const worker = async () => {
+    while (cursor < unique.length) {
+      const url = unique[cursor++];
+      try {
+        const res = await fetch(url);
+        if (res.ok) results.set(url, await res.arrayBuffer());
+      } catch {
+        // Leave it out of the map; the cell falls back to a hyperlink.
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, unique.length) }, worker));
+  return results;
+}
+
 async function exportExcel(
   columns: QuestionColumn[],
   submissions: Submission[],
@@ -270,6 +306,20 @@ async function exportExcel(
       cell.alignment = { vertical: "middle", horizontal: "center" };
     });
 
+    // Collect every image URL up front so they can be downloaded in parallel.
+    const imageColumnTypes = new Set(["imageAnswerBlock", "signatureAnswerBlock"]);
+    const imageUrls: string[] = [];
+    for (const s of submissions) {
+      for (const c of columns) {
+        const val = s.data[c.id];
+        if (typeof val !== "string" || !val.startsWith("http")) continue;
+        if (imageColumnTypes.has(c.type) || val.includes("fieldtally") || val.includes("signature")) {
+          imageUrls.push(val);
+        }
+      }
+    }
+    const imageBuffers = await fetchImages(imageUrls);
+
     // Populate rows
     for (let i = 0; i < submissions.length; i++) {
       const s = submissions[i];
@@ -308,10 +358,8 @@ async function exportExcel(
             // Increase row height to fit the embedded image preview
             row.height = 80;
 
-            // Fetch the image
-            const res = await fetch(val);
-            if (!res.ok) throw new Error("Fetch failed");
-            const arrayBuffer = await res.arrayBuffer();
+            const arrayBuffer = imageBuffers.get(val);
+            if (!arrayBuffer) throw new Error("Image could not be downloaded");
 
             // Detect extension from URL or content-type
             let ext = "png";
@@ -876,6 +924,8 @@ function SubmissionsContent() {
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"responses" | "analysis">("responses");
+  const [truncated, setTruncated] = useState(false);
+  const [visibleRows, setVisibleRows] = useState(TABLE_PAGE_SIZE);
 
   // Fetch data
   useEffect(() => {
@@ -889,28 +939,19 @@ function SubmissionsContent() {
         return;
       }
 
-      // Form info
-      const { data: form } = await supabase
-        .from("forms")
-        .select("id, draft_schema, created_by")
-        .eq("id", formId)
-        .single();
-
-      if (!form || form.created_by !== user.id) {
+      // Access is decided by the API, which admits owners, editors and viewers —
+      // not only the creator, as this page previously required.
+      const formResult = await apiGet<{ title: string; versions: FormVersion[] }>(
+        `/api/forms/${formId}/versions`
+      );
+      if (!formResult.ok || !formResult.data) {
         router.replace("/dashboard");
         return;
       }
 
-      setFormTitle((form.draft_schema as any)?.title || "Untitled Form");
+      setFormTitle(formResult.data.title || "Untitled Form");
 
-      // Form versions
-      const { data: versionRows } = await supabase
-        .from("form_versions")
-        .select("id, version, title, content, created_at")
-        .eq("form_id", formId)
-        .order("version", { ascending: false });
-
-      const vList = (versionRows as FormVersion[]) || [];
+      const vList = formResult.data.versions || [];
       setVersions(vList);
 
       // Default to latest version
@@ -918,19 +959,36 @@ function SubmissionsContent() {
         setSelectedVersion(vList[0].version);
       }
 
-      // All submissions
-      const { data: subRows } = await supabase
-        .from("submissions")
-        .select("id, form_version, submitted_by, data, filled_at, synced_at")
-        .eq("form_id", formId)
-        .order("filled_at", { ascending: false });
+      // Pull responses a page at a time up to a ceiling, rather than issuing one
+      // unbounded query. The charts need the full set for the selected version,
+      // so we accumulate pages instead of stopping at the first.
+      const collected: Submission[] = [];
+      let offset = 0;
+      let more = true;
 
-      setSubmissions((subRows as Submission[]) || []);
+      while (more && collected.length < MAX_LOADED_SUBMISSIONS) {
+        const page = await apiGet<{ submissions: Submission[]; hasMore: boolean }>(
+          `/api/forms/${formId}/submissions?limit=${FETCH_PAGE_SIZE}&offset=${offset}`
+        );
+        if (!page.ok || !page.data) break;
+
+        collected.push(...page.data.submissions);
+        more = page.data.hasMore;
+        offset += FETCH_PAGE_SIZE;
+      }
+
+      setTruncated(more);
+      setSubmissions(collected);
       setLoading(false);
     }
 
     load();
   }, [formId, router]);
+
+  // Reset how much of the table is rendered when the version tab changes.
+  useEffect(() => {
+    setVisibleRows(TABLE_PAGE_SIZE);
+  }, [selectedVersion, activeTab]);
 
   // Derived: columns for selected version
   const activeVersion = useMemo(
@@ -960,6 +1018,12 @@ function SubmissionsContent() {
 
   const totalCount = submissions.length;
 
+  // Only this slice is rendered; the rest is behind "Show more".
+  const renderedSubmissions = useMemo(
+    () => filteredSubmissions.slice(0, visibleRows),
+    [filteredSubmissions, visibleRows]
+  );
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-zinc-50">
@@ -975,20 +1039,21 @@ function SubmissionsContent() {
     <div className="min-h-screen bg-zinc-50">
       {/* Header */}
       <div className="bg-white border-b border-zinc-200/60">
-        <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <Link
               href="/dashboard"
-              className="flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-800 transition-colors"
+              className="flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-800 transition-colors shrink-0"
+              aria-label="Back to dashboard"
             >
-              <ArrowLeft className="w-4 h-4" />
-              Dashboard
+              <ArrowLeft className="w-4 h-4 shrink-0" />
+              <span className="hidden sm:inline">Dashboard</span>
             </Link>
-            <div className="w-px h-5 bg-zinc-200" />
-            <h1 className="text-sm font-semibold text-zinc-900 truncate max-w-[300px]">
+            <div className="hidden sm:block w-px h-5 bg-zinc-200 shrink-0" />
+            <h1 className="text-sm font-semibold text-zinc-900 truncate min-w-0 sm:max-w-[300px]">
               {formTitle}
             </h1>
-            <span className="text-xs text-zinc-400 font-medium bg-zinc-100 px-2 py-0.5 rounded-full">
+            <span className="hidden sm:inline text-xs text-zinc-400 font-medium bg-zinc-100 px-2 py-0.5 rounded-full shrink-0">
               {totalCount} {totalCount === 1 ? "response" : "responses"}
             </span>
           </div>
@@ -1091,6 +1156,15 @@ function SubmissionsContent() {
         </div>
       )}
 
+      {truncated && (
+        <div className="bg-amber-50 border-b border-amber-200 px-6 py-2.5">
+          <div className="max-w-7xl mx-auto text-xs text-amber-800">
+            Showing the most recent {MAX_LOADED_SUBMISSIONS.toLocaleString()} responses. Export to a
+            file to work with the complete set.
+          </div>
+        </div>
+      )}
+
       {/* Content */}
       <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col gap-6">
         {versions.length === 0 ? (
@@ -1173,7 +1247,7 @@ function SubmissionsContent() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredSubmissions.map((sub, i) => (
+                      {renderedSubmissions.map((sub, i) => (
                         <tr
                           key={sub.id}
                           className={`border-b border-zinc-50 hover:bg-zinc-50/50 transition-colors ${
@@ -1258,10 +1332,21 @@ function SubmissionsContent() {
                   </table>
                 </div>
 
+                {renderedSubmissions.length < filteredSubmissions.length && (
+                  <div className="flex justify-center py-4 border-t border-zinc-100">
+                    <button
+                      onClick={() => setVisibleRows((n) => n + TABLE_PAGE_SIZE)}
+                      className="px-5 py-2 text-sm font-medium text-zinc-700 bg-white border border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50 rounded-lg transition-all shadow-sm"
+                    >
+                      Show more ({filteredSubmissions.length - renderedSubmissions.length} remaining)
+                    </button>
+                  </div>
+                )}
+
                 {/* Footer */}
                 <div className="px-4 py-3 border-t border-zinc-100 bg-zinc-50/50 flex items-center justify-between">
                   <span className="text-xs text-zinc-400">
-                    Showing {filteredSubmissions.length}{" "}
+                    Showing {renderedSubmissions.length} of {filteredSubmissions.length}{" "}
                     {filteredSubmissions.length === 1 ? "response" : "responses"} for
                     Version {selectedVersion}
                   </span>

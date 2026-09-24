@@ -21,6 +21,7 @@ import {
   MapPin,
   Image,
   PenTool,
+  ListFilter,
 } from "lucide-react";
 
 import { createSuggestionItems } from "novel";
@@ -38,6 +39,13 @@ const checkboxesContent = {
 const multipleChoiceContent = {
   type: "multipleChoiceBlock",
   content: [{ type: "multipleChoiceTitle" }, { type: "multipleChoiceOption" }],
+};
+
+// Searchable Choice is a checkbox block with the filter box switched on. Use
+// Turn Into → Multiple Choice to make it single-select; the flag carries over.
+const searchableChoiceContent = {
+  ...checkboxesContent,
+  attrs: { searchable: true },
 };
 
 export const suggestionItems = createSuggestionItems([
@@ -171,6 +179,21 @@ export const suggestionItems = createSuggestionItems([
         .focus()
         .deleteRange(range)
         .insertContent(multipleChoiceContent)
+        .setTextSelection(range.from + 1)
+        .run();
+    },
+  },
+  {
+    title: "Searchable Choice",
+    description: "Long option list you filter by typing, then pick one or many.",
+    searchTerms: ["search", "filter", "typeahead", "combobox", "dropdown", "select", "long list", "msq", "mcq", "autocomplete"],
+    icon: <ListFilter size={18} />,
+    command: ({ editor, range }) => {
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .insertContent(searchableChoiceContent)
         .setTextSelection(range.from + 1)
         .run();
     },

@@ -22,7 +22,8 @@ const SimpleQuestionBlock = z.object({
 
 const MultipleChoiceBlock = z.object({
   type: z.literal("multipleChoiceBlock"),
-  attrs: z.object({ id: z.string().regex(/^q_/), required: z.boolean() }),
+  // `searchable` must be declared or Zod strips it from the AI's output.
+  attrs: z.object({ id: z.string().regex(/^q_/), required: z.boolean(), searchable: z.boolean().optional() }),
   content: z.array(z.object({
     type: z.enum(["multipleChoiceTitle", "multipleChoiceOption"]),
     content: z.array(TextNode)
@@ -31,7 +32,7 @@ const MultipleChoiceBlock = z.object({
 
 const CheckboxBlock = z.object({
   type: z.literal("checkboxBlock"),
-  attrs: z.object({ id: z.string().regex(/^q_/), required: z.boolean() }),
+  attrs: z.object({ id: z.string().regex(/^q_/), required: z.boolean(), searchable: z.boolean().optional() }),
   content: z.array(z.object({
     type: z.enum(["checkboxTitle", "checkboxOption"]),
     content: z.array(TextNode)

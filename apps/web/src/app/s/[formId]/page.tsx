@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { supabase } from "../../../lib/supabase";
+import { apiGet, apiSend } from "../../../lib/apiClient";
 import FormRenderer from "../../../components/FormRenderer";
 import { FileDown, Copy, Check, Trophy } from "lucide-react";
 
@@ -11,7 +11,7 @@ function PoweredByBadge() {
   return (
     <Link 
       href="/"
-      className="fixed bottom-6 right-6 flex items-center gap-1.5 px-3 py-2 bg-white/80 border border-zinc-200/60 rounded-lg text-xs font-medium text-zinc-500 hover:text-zinc-800 hover:bg-zinc-50 transition-all z-50 group"
+      className="mx-auto mt-8 mb-6 w-fit sm:fixed sm:bottom-6 sm:right-6 sm:mx-0 sm:my-0 flex items-center gap-1.5 px-3 py-2 bg-white/80 border border-zinc-200/60 rounded-lg text-xs font-medium text-zinc-500 hover:text-zinc-800 hover:bg-zinc-50 transition-all z-50 group"
     >
       <span>Powered by</span>
       <span className="font-semibold text-zinc-800">FieldTally</span>
@@ -78,129 +78,63 @@ function SubmissionPageContent() {
       }
       
       try {
-        // Fetch form status to ensure it's accessible and get its data
-        const { data: form, error: formError } = await supabase
-          .from('forms')
-          .select('id, status, access_open, created_by')
-          .eq('id', formId)
-          .single();
-          
-        if (formError || !form) {
-          setError(`Form not found or you do not have permission to view it.`);
-          setLoading(false);
-          return;
-        }
+        // Load through the API rather than querying Supabase directly: the route
+        // performs the access check and, for a quiz, removes the answer key
+        // before the schema ever reaches this browser.
+        const query = versionQuery ? `?version=${encodeURIComponent(versionQuery)}` : "";
+        const result = await apiGet<{
+          version_id: string;
+          title: string;
+          schema: any;
+          version: number;
+          is_latest: boolean;
+          role: string;
+        }>(`/api/forms/${formId}${query}`);
 
-        if (form.status !== 'published') {
-          setError("This form is not currently published.");
-          setLoading(false);
-          return;
-        }
-
-        // Get user role information
-        let resolvedRole: string | null = null;
-        const { data: { user } } = await supabase.auth.getUser();
-
-        if (user) {
-          if (user.id === form.created_by) {
-            resolvedRole = 'owner';
-          } else {
-            const { data: member } = await supabase
-              .from('form_members')
-              .select('role')
-              .eq('form_id', form.id)
-              .eq('user_id', user.id)
-              .maybeSingle();
-            if (member) {
-              resolvedRole = member.role;
-            }
-          }
-        }
-
-        // Access Control Logic
-        if (!form.access_open) {
-          if (!user) {
+        if (!result.ok || !result.data) {
+          if (result.status === 401) {
             setError("restricted");
-            setLoading(false);
-            return;
-          }
-
-          if (user.id !== form.created_by && !resolvedRole) {
+          } else if (result.status === 403) {
             setError("You do not have permission to access this form.");
-            setLoading(false);
-            return;
+          } else {
+            setError(result.error || "Form not found or you do not have permission to view it.");
           }
+          setLoading(false);
+          return;
         }
 
+        const version = result.data;
+        const resolvedRole = version.role && version.role !== "anonymous" ? version.role : null;
         setUserRole(resolvedRole);
+        setIsLatestVersion(version.is_latest !== false);
 
-        // Fetch latest version info to see if requested version is latest
-        const { data: latestVersionResult, error: latestError } = await supabase.from('form_versions')
-          .select('id, version, title, content')
-          .eq('form_id', formId)
-          .order('version', { ascending: false })
-          .limit(1)
-          .single();
-          
-        if (latestError || !latestVersionResult) {
-           setError("No published versions found for this form.");
-           setLoading(false);
-           return;
-        }
-
-        let targetVersionData = latestVersionResult;
-
-        if (versionQuery) {
-          const versionNumber = parseInt(versionQuery, 10);
-          if (!isNaN(versionNumber) && versionNumber !== latestVersionResult.version) {
-            const { data: specificVersion, error: specificError } = await supabase
-              .from('form_versions')
-              .select('id, version, title, content')
-              .eq('form_id', formId)
-              .eq('version', versionNumber)
-              .single();
-
-            if (!specificError && specificVersion) {
-              targetVersionData = specificVersion;
-              setIsLatestVersion(false);
-            } else {
-              setError(`Form version ${versionNumber} not found.`);
-              setLoading(false);
-              return;
-            }
-          }
-        }
-
-        const isQuiz = (targetVersionData.content as any)?.attrs?.quizMode === true;
-        if (isQuiz) {
-          const localCheck = localStorage.getItem(`quiz_submitted_${formId}`);
-          if (localCheck) {
+        // Tell a returning taker before they fill the quiz in again. The local
+        // flag covers this device; the query covers the same account on another
+        // one. Neither is the real gate — the server rejects a second attempt.
+        if (version.schema?.attrs?.quizMode === true) {
+          if (localStorage.getItem(`quiz_submitted_${formId}`)) {
             setError("already_submitted");
             setLoading(false);
             return;
           }
 
-          if (user) {
-            const { data: existingSubmissions } = await supabase
-              .from('submissions')
-              .select('id')
-              .eq('form_id', formId)
-              .eq('submitted_by', user.id)
-              .limit(1);
-
-            if (existingSubmissions && existingSubmissions.length > 0) {
-              setError("already_submitted");
-              setLoading(false);
-              return;
-            }
+          const mine = await apiGet<{ submissions: unknown[]; scope: "all" | "own" }>(
+            `/api/forms/${formId}/submissions?limit=1`
+          );
+          // Only meaningful when the response is scoped to this user. Staff get
+          // every response back, which says nothing about their own attempt.
+          if (mine.ok && mine.data?.scope === "own" && (mine.data.submissions?.length ?? 0) > 0) {
+            setError("already_submitted");
+            setLoading(false);
+            return;
           }
         }
 
-        setFormVersionId(targetVersionData.id);
-        setFormSchema(targetVersionData.content);
-        setFormTitle(targetVersionData.title);
-        setFormVersionNum(targetVersionData.version);
-        document.title = targetVersionData.title ? `${targetVersionData.title} · FieldTally` : "FieldTally";
+        setFormVersionId(version.version_id);
+        setFormSchema(version.schema);
+        setFormTitle(version.title);
+        setFormVersionNum(version.version);
+        document.title = version.title ? `${version.title} · FieldTally` : "FieldTally";
         setLoading(false);
       } catch {
         setError("Error loading form.");
@@ -217,44 +151,46 @@ function SubmissionPageContent() {
       return;
     }
 
-    if (answers.__quiz_result) {
-      setQuizResult(answers.__quiz_result);
-    }
-
     if (formId === "preview") {
       console.log("Preview submission data (database insert bypassed):", answers);
+      if (answers.__quiz_result) setQuizResult(answers.__quiz_result);
       setSubmitted(true);
       return;
     }
 
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (formVersionNum == null) {
-        alert("Could not determine form version. Please reload and try again.");
-        return;
-      }
-
-      const { error } = await supabase.from('submissions').insert({
-        form_id: formId,
-        form_version: formVersionNum,
-        submitted_by: user ? user.id : null,
-        data: answers,
-        filled_at: new Date().toISOString()
-      });
-
-      if (error) throw error;
-
-      const isQuiz = (formSchema as any)?.attrs?.quizMode === true;
-      if (isQuiz) {
-        localStorage.setItem(`quiz_submitted_${formId}`, "true");
-      }
-
-      setSubmitted(true);
-    } catch (err: any) {
-      console.error("Submission failed:", err);
-      alert(`Failed to submit form: ${err.message || 'Unknown error'}`);
+    if (formVersionNum == null) {
+      alert("Could not determine form version. Please reload and try again.");
+      throw new Error("Missing form version");
     }
+
+    const result = await apiSend<{ quiz_result: any }>(
+      `/api/forms/${formId}/submissions`,
+      "POST",
+      { data: answers, form_version: formVersionNum }
+    );
+
+    // Throwing keeps FormRenderer on the form with the answers intact instead of
+    // showing a success screen for a response that was never saved.
+    if (!result.ok) {
+      if (result.status === 409) {
+        setError("already_submitted");
+        throw new Error(result.error || "Already submitted");
+      }
+      alert(`Failed to submit form: ${result.error || "Unknown error"}`);
+      throw new Error(result.error || "Submission failed");
+    }
+
+    // Show the score the server calculated, not the one this page worked out —
+    // they agree, but the server's is the one that was stored.
+    if (result.data?.quiz_result) {
+      setQuizResult(result.data.quiz_result);
+    }
+
+    if ((formSchema as any)?.attrs?.quizMode === true) {
+      localStorage.setItem(`quiz_submitted_${formId}`, "true");
+    }
+
+    setSubmitted(true);
   };
 
   if (loading) {
@@ -337,7 +273,7 @@ function SubmissionPageContent() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-zinc-50 relative pb-16">
         <div className="bg-white p-10 rounded-2xl shadow-sm border border-zinc-200 text-center max-w-md animate-in fade-in zoom-in duration-500 w-full mx-4">
-          <div className="w-16 h-16 bg-green-50 text-green-500 rounded-full flex items-center justify-center mx-auto mb-6">
+          <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6">
             <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
             </svg>
@@ -401,15 +337,15 @@ function SubmissionPageContent() {
         <div className="flex items-center gap-2">
           <button
             onClick={handleCopyLink}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-zinc-600 hover:text-zinc-800 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200/60 rounded-lg shadow-2xs transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-2 min-h-[2.25rem] text-xs font-semibold text-zinc-600 hover:text-zinc-800 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200/60 rounded-lg shadow-2xs transition-all cursor-pointer"
           >
-            {copiedUrl ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5 text-zinc-400" />}
+            {copiedUrl ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-zinc-400" />}
             <span>{copiedUrl ? "Copied Link!" : "Copy Link"}</span>
           </button>
           
           <button
             onClick={handleExportPDF}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-zinc-600 hover:text-zinc-800 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200/60 rounded-lg shadow-2xs transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-2 min-h-[2.25rem] text-xs font-semibold text-zinc-600 hover:text-zinc-800 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200/60 rounded-lg shadow-2xs transition-all cursor-pointer"
           >
             <FileDown className="w-3.5 h-3.5 text-zinc-400" />
             <span>Export PDF</span>

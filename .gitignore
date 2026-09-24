@@ -38,3 +38,5 @@ yarn-error.log*
 *.pem
 
 mobile/
+# Generated knowledge graph — regenerate with `graphify update .`
+graphify-out/

@@ -2,6 +2,7 @@ import { useState, useCallback } from "react"
 import { Phase, Message, ToneKey, DocSchema } from "../types"
 import { buildElicitationPrompt } from "../utils/buildElicitationPrompt"
 import { generateFormSchema } from "../utils/generateFormSchema"
+import { apiSend } from "@/lib/apiClient"
 
 const READY_TOKEN = "READY_TO_GENERATE"
 
@@ -25,19 +26,14 @@ export const useAIFormBuilder = (getCurrentSchema?: () => any) => {
     setMessages(updatedMessages)
 
     try {
-      const response = await fetch("/api/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          systemPrompt: buildElicitationPrompt(tone, getCurrentSchema?.()),
-          messages: updatedMessages
-        })
+      const result = await apiSend<{ content: string }>("/api/ai/chat", "POST", {
+        systemPrompt: buildElicitationPrompt(tone, getCurrentSchema?.()),
+        messages: updatedMessages
       })
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to fetch response from AI")
+      if (!result.ok) {
+        throw new Error(result.error || "Failed to fetch response from AI")
       }
-      const assistantText: string = data.content
+      const assistantText = result.data?.content
       if (typeof assistantText !== "string") {
         throw new Error("Invalid response format received from AI")
       }
@@ -59,7 +55,9 @@ export const useAIFormBuilder = (getCurrentSchema?: () => any) => {
         await runGeneration(tone, withAssistant)
       }
     } catch (err) {
-      setError("Something went wrong. Please try again.")
+      // Show the real reason (not signed in, rate limited) rather than a generic
+      // message the user cannot act on.
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.")
     } finally {
       setLoading(false)
     }
