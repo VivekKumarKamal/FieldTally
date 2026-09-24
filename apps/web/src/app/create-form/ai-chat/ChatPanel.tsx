@@ -180,12 +180,19 @@ export default function ChatPanel({ isOpen, onClose, onApplySchema, currentFormT
   return (
     <div
       data-ai-panel="true"
-      className={`fixed top-[64px] sm:top-[72px] right-2 sm:right-4 left-2 sm:left-auto h-[calc(100dvh-5rem)] sm:h-[calc(100dvh-5.5rem)] w-auto sm:w-[min(400px,calc(100vw-2rem))] bg-white border border-zinc-200 flex flex-col rounded-2xl z-[90] transition-all duration-300 ease-in-out transform ${
-        isOpen ? "translate-x-0" : "translate-x-[calc(100%+2rem)] pointer-events-none"
+      // Below lg there is no room for a real side-by-side column, so it stays a
+      // floating drawer (rounded, inset from the edges) like every other mobile
+      // overlay in this app. From lg up it docks flush against the right edge,
+      // right below the toolbar, full height — a real panel at the same level
+      // as the form, not a card sitting on top of it. create-form/page.tsx
+      // reserves the matching width (lg:mr-[420px]) on the editor column so the
+      // two never overlap.
+      className={`fixed top-[64px] sm:top-[72px] lg:top-14 right-2 sm:right-4 lg:right-0 left-2 sm:left-auto lg:left-auto h-[calc(100dvh-5rem)] sm:h-[calc(100dvh-5.5rem)] lg:h-[calc(100dvh-3.5rem)] w-auto sm:w-[min(400px,calc(100vw-2rem))] lg:w-[400px] bg-white border border-zinc-200 lg:border-y-0 lg:border-r-0 flex flex-col rounded-2xl lg:rounded-none z-[90] transition-transform duration-300 ease-in-out transform ${
+        isOpen ? "translate-x-0" : "translate-x-[calc(100%+2rem)] lg:translate-x-full pointer-events-none"
       }`}
     >
       {/* Drawer Header */}
-      <div className="h-14 border-b border-zinc-100 px-5 flex items-center justify-between shrink-0 rounded-t-2xl bg-zinc-50/50">
+      <div className="h-14 border-b border-zinc-100 px-5 flex items-center justify-between shrink-0 rounded-t-2xl lg:rounded-none bg-zinc-50/50">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 bg-blue-600/10 rounded-lg flex items-center justify-center">
             <Sparkles className="w-4 h-4 text-blue-600 animate-pulse" />
@@ -422,10 +429,12 @@ export default function ChatPanel({ isOpen, onClose, onApplySchema, currentFormT
             </div>
           )}
 
-          {/* Input stays available after a failure too — hiding it left the user
-              with a dead panel and no way to retry or reword. */}
-          {((phase === "eliciting" || phase === "error") && tone) && (
-            <div className="p-4 border-t border-zinc-100 bg-white shrink-0 rounded-b-2xl">
+          {/* Always visible once a tone is picked — it used to hide during
+              "generating"/"preview"/"error", leaving a dead panel with no way to
+              type. The textarea/send button below are disabled while a request
+              is in flight instead, so there is always something to type into. */}
+          {tone && (
+            <div className="p-4 border-t border-zinc-100 bg-white shrink-0 rounded-b-2xl lg:rounded-none">
               {/* Interactive Tone Pill Selector */}
               <div className="flex flex-col gap-1.5 pb-3">
                 <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tone</span>

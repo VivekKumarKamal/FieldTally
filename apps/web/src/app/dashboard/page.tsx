@@ -1,17 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, FileText, Globe, Pencil, Trash2, Clock, AlertCircle, ClipboardList, Compass } from "lucide-react";
+import { Plus, FileText, Globe, Pencil, Trash2, Clock, AlertCircle, ClipboardList, Compass, Search, ArrowUpDown } from "lucide-react";
 import { parseStoredDraft, deleteForm } from "../../lib/formActions";
 import { apiGet, apiSend } from "../../lib/apiClient";
 import * as Popover from "@radix-ui/react-popover";
 import { TEMPLATES, createFormFromTemplate } from "../../lib/templates";
 
-/** Forms are fetched a page at a time — the list is unbounded in principle. */
-const PAGE_SIZE = 20;
+/** Large enough that search/filter/sort (client-side, over this page) sees
+ * every form for virtually all users in one request — the API caps this at
+ * 100. "Load more" still exists below that for the rare account past it. */
+const PAGE_SIZE = 100;
 
 const TEMPLATE_ICONS: Record<string, any> = {
   Compass: Compass,
@@ -50,6 +52,9 @@ export default function Dashboard() {
   const [totalForms, setTotalForms] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "draft" | "published">("all");
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
 
   const fetchOwnedForms = async (offset: number) => {
     const result = await apiGet<{ forms: FormRow[]; total: number; hasMore: boolean }>(
@@ -198,6 +203,25 @@ export default function Dashboard() {
     return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   };
 
+  // Search/filter/sort run over whatever is currently loaded (up to PAGE_SIZE,
+  // which is nearly always "all of them" — see the constant's comment).
+  const visibleForms = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    let list = forms.filter((f) => {
+      if (statusFilter !== "all" && (f.status ?? "draft") !== statusFilter) return false;
+      if (q && !getFormTitle(f).toLowerCase().includes(q)) return false;
+      return true;
+    });
+    list = [...list].sort((a, b) => {
+      const at = a.updated_at ? Date.parse(a.updated_at) : 0;
+      const bt = b.updated_at ? Date.parse(b.updated_at) : 0;
+      return sortOrder === "newest" ? bt - at : at - bt;
+    });
+    return list;
+  }, [forms, search, statusFilter, sortOrder]);
+
+  const isFiltered = search.trim() !== "" || statusFilter !== "all";
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-zinc-50">
@@ -337,8 +361,42 @@ export default function Dashboard() {
 
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold text-zinc-900">Your Forms</h2>
-          <span className="text-sm text-zinc-400">{totalForms} {totalForms === 1 ? "form" : "forms"}</span>
+          <span className="text-sm text-zinc-400">
+            {isFiltered ? `${visibleForms.length} of ${totalForms}` : totalForms} {totalForms === 1 ? "form" : "forms"}
+          </span>
         </div>
+
+        {forms.length > 0 && (
+          <div className="flex flex-col sm:flex-row gap-2 mb-4">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search your forms…"
+                className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-zinc-200 rounded-lg outline-none focus:border-zinc-400 transition-colors"
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+              className="px-3 py-2 text-sm bg-white border border-zinc-200 rounded-lg outline-none focus:border-zinc-400 text-zinc-700 cursor-pointer"
+            >
+              <option value="all">All statuses</option>
+              <option value="draft">Draft</option>
+              <option value="published">Published</option>
+            </select>
+            <button
+              onClick={() => setSortOrder((o) => (o === "newest" ? "oldest" : "newest"))}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm bg-white border border-zinc-200 hover:border-zinc-300 rounded-lg transition-colors text-zinc-700 whitespace-nowrap"
+              title="Sort by last updated"
+            >
+              <ArrowUpDown className="w-3.5 h-3.5 text-zinc-400" />
+              {sortOrder === "newest" ? "Newest first" : "Oldest first"}
+            </button>
+          </div>
+        )}
 
         {forms.length === 0 ? (
           <div className="text-center py-20">
@@ -355,9 +413,17 @@ export default function Dashboard() {
               Create Form
             </button>
           </div>
+        ) : visibleForms.length === 0 ? (
+          <div className="text-center py-20">
+            <div className="w-16 h-16 bg-zinc-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Search className="w-8 h-8 text-zinc-300" />
+            </div>
+            <h3 className="text-lg font-semibold text-zinc-700 mb-1">No matching forms</h3>
+            <p className="text-sm text-zinc-400">Try a different search or filter.</p>
+          </div>
         ) : (
           <div className="grid gap-3">
-            {forms.map(form => {
+            {visibleForms.map(form => {
               const title = getFormTitle(form);
               const isPublished = form.status === "published";
               const isDeleting = deletingId === form.id;

@@ -22,9 +22,6 @@ const OPTION_CHILD: Record<string, string> = {
 
 const OPTION_TYPES = new Set(Object.values(OPTION_CHILD));
 
-/** Block types that can carry an answer key, and so a point value. */
-const GRADABLE = new Set(["multipleChoiceBlock", "checkboxBlock", "numberAnswerBlock"]);
-
 /** The answer key as a list, whichever shape the block stores it in. */
 function answerList(correctAnswer: unknown): string[] {
   if (Array.isArray(correctAnswer)) return correctAnswer.filter((v): v is string => typeof v === "string");
@@ -40,19 +37,23 @@ function buildDecorations(doc: ProseMirrorNode): DecorationSet {
   doc.descendants((node, pos) => {
     const childType = OPTION_CHILD[node.type.name];
 
-    // Points badge on any graded question, whether or not it has options.
-    // Attached to the BLOCK, not the title: a widget inside the title makes
-    // ProseMirror append a trailing <br> (the widget becomes the last inline
-    // child), which pushed the required asterisk onto its own line. An absolutely
-    // positioned pseudo-element on the block stays out of the inline flow.
-    if (GRADABLE.has(node.type.name) && node.attrs.correctAnswer != null) {
+    // Points badge on multipleChoice/checkbox questions, attached to the TITLE
+    // node (not the block) via an attribute-only decoration — no DOM insertion,
+    // so it can't trip the trailing-<br> issue a widget causes. The CSS renders
+    // it as a real ::before in the title's own inline flow, the same way the
+    // required asterisk already renders as an ::after — it wraps with long text
+    // instead of floating over it. An earlier absolutely-positioned version
+    // pinned to the block's top-right corner overlapped wrapped question text.
+    if (childType && node.attrs.correctAnswer != null) {
       const points = node.attrs.quizPoints ?? 1;
-      decorations.push(
-        Decoration.node(pos, pos + node.nodeSize, {
-          class: "has-quiz-points",
-          "data-quiz-points": `${points} ${points === 1 ? "point" : "points"}`,
-        })
-      );
+      const title = node.firstChild;
+      if (title) {
+        decorations.push(
+          Decoration.node(pos + 1, pos + 1 + title.nodeSize, {
+            "data-quiz-points": `${points} ${points === 1 ? "point" : "points"}`,
+          })
+        );
+      }
     }
 
     if (!childType) return true;

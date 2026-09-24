@@ -23,11 +23,12 @@ import {
   CheckSquare, CircleDot, MapPin, Image, PenTool,
   Heading1, Heading2, Heading3, List, ListOrdered, Cloud, Check, History, CloudUpload, CloudOff, CloudCheck, ChevronLeft,
   FileDown, LayoutGrid, Sparkles, Share2, Globe, Lock, Trophy,
-  Eye, Upload, MoreHorizontal
+  Eye, Upload, MoreHorizontal, HelpCircle, ListChecks, Award
 } from "lucide-react";
 import * as Popover from "@radix-ui/react-popover";
 import * as Switch from "@radix-ui/react-switch";
 import { Tooltip } from "../../components/Tooltip";
+import FormBuilderTour, { REPLAY_TOUR_EVENT } from "../../components/FormBuilderTour";
 import { supabase } from "../../lib/supabase";
 import { apiGet } from "../../lib/apiClient";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -794,6 +795,16 @@ function FormEditorContent() {
               );
             })()}
 
+            <Tooltip content="Show walkthrough">
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent(REPLAY_TOUR_EVENT))}
+                aria-label="Show walkthrough"
+                className="icon-btn hidden sm:inline-flex text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100"
+              >
+                <HelpCircle className="w-5 h-5" />
+              </button>
+            </Tooltip>
+
             {formVersion !== null && (
               <span className="hidden sm:inline-block text-xs font-medium text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded-full border border-zinc-200 shrink-0">
                 v{formVersion}
@@ -1234,12 +1245,14 @@ function FormEditorContent() {
 
         {/* Left padding is sized to clear the fixed drag handle, which globals.css
             pins into the gutter below 1024px: ~44px for the stacked phone layout,
-            ~96px for the horizontal one. The AI panel is an overlay on small
-            screens and only reserves side margin once there is room for it. */}
+            ~96px for the horizontal one. Below lg the AI panel is a floating
+            drawer over the content (no room for two columns); from lg up it
+            docks as a real column (see ChatPanel.tsx), so the editor reserves
+            matching width via lg:mr-[420px] instead of being covered by it. */}
         <div
           className={`pt-24 sm:pt-28 lg:pt-36 pb-24 max-w-4xl mx-auto transition-all duration-300 ${
             isAiChatOpen
-              ? 'pl-11 pr-4 md:pl-24 md:pr-8 xl:mr-[440px] xl:ml-28 xl:pl-0 xl:pr-0 xl:max-w-2xl'
+              ? 'pl-11 pr-4 md:pl-24 md:pr-8 lg:pl-24 lg:pr-8 lg:mr-[420px] lg:max-w-2xl'
               : 'pl-11 pr-4 md:pl-24 md:pr-8 lg:px-12'
           }`}
         >
@@ -1679,14 +1692,17 @@ function FormEditorContent() {
                   <Trophy size={12} />
                   Quiz
                 </span>
-                <span className="text-xs text-zinc-500">
-                  <strong className="font-semibold text-zinc-700">{quizSummary.totalQuestions}</strong>
-                  {quizSummary.totalQuestions === 1 ? " question" : " questions"}
-                  <span className="text-zinc-300"> · </span>
-                  <strong className="font-semibold text-zinc-700">{quizSummary.gradedQuestions}</strong> graded
-                  <span className="text-zinc-300"> · </span>
-                  <strong className="font-semibold text-zinc-700">{quizSummary.totalPoints}</strong>
-                  {quizSummary.totalPoints === 1 ? " point" : " points"} total
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-zinc-50 border border-zinc-200 text-zinc-600 text-xs font-medium">
+                  <ListChecks size={13} className="text-zinc-400" />
+                  {quizSummary.totalQuestions} {quizSummary.totalQuestions === 1 ? "question" : "questions"}
+                </span>
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-zinc-50 border border-zinc-200 text-zinc-600 text-xs font-medium">
+                  <Check size={13} className="text-emerald-500" />
+                  {quizSummary.gradedQuestions} graded
+                </span>
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-zinc-50 border border-zinc-200 text-zinc-600 text-xs font-medium">
+                  <Award size={13} className="text-amber-500" />
+                  {quizSummary.totalPoints} {quizSummary.totalPoints === 1 ? "point" : "points"}
                 </span>
                 {quizSummary.gradedQuestions === 0 && (
                   <span className="text-xs text-amber-600">
@@ -1921,7 +1937,7 @@ function FormEditorContent() {
         />
       </div>
 
-
+      <FormBuilderTour />
     </div>
   );
 }

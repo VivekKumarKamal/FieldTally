@@ -931,18 +931,16 @@ body {
   content: none;
 }
 
-/* Per-question mark allocation, from the quizAnswerPicker decorations.
-   Absolutely positioned so it never joins the title's inline flow — that is what
-   pushed the required asterisk onto its own line. */
-.quiz-mode-active .tiptap:not(.form-renderer) .has-quiz-points {
-  position: relative;
-}
-
-.quiz-mode-active .tiptap:not(.form-renderer) .has-quiz-points::before {
+/* Per-question mark allocation, from the quizAnswerPicker decoration on the
+   title node. A real ::before in the title's own inline flow — like the
+   required asterisk's ::after just below — so it wraps with long question text
+   instead of floating over it. An earlier absolutely-positioned version pinned
+   to the block's corner overlapped wrapped text (see git history for why). */
+.quiz-mode-active .tiptap:not(.form-renderer) div[data-type="checkbox-title"][data-quiz-points]::before,
+.quiz-mode-active .tiptap:not(.form-renderer) div[data-type="multiple-choice-title"][data-quiz-points]::before {
   content: attr(data-quiz-points);
-  position: absolute;
-  top: 0;
-  right: 0;
+  display: inline-flex;
+  margin-right: 8px;
   padding: 1px 8px;
   border-radius: 999px;
   background-color: #f4f4f5;
@@ -953,7 +951,25 @@ body {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
-  pointer-events: none;
+  vertical-align: middle;
+  user-select: none;
+}
+
+/* Same pill, rendered by React for numberAnswerBlock (see QuizPointsBadge). */
+.tiptap:not(.form-renderer) .quiz-points-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background-color: #f4f4f5;
+  color: #52525b;
+  border: 1px solid #e4e4e7;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
   user-select: none;
 }
 
