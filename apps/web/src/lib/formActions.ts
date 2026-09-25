@@ -94,6 +94,7 @@ export interface LoadFormResult {
   version?: number | null;
   latestPublishedSchema?: any;
   latestPublishedTitle?: string | null;
+  kind?: string;
 }
 
 /**
@@ -126,6 +127,7 @@ export async function loadForm(initialContent: any, formIdParam?: string | null)
   let version: number | null = null;
   let latestPublishedSchema: any = null;
   let latestPublishedTitle: string | null = null;
+  let kind: string | undefined;
 
   if (!user) {
     return { formId: currentId, userId, schema, title, shouldRemount, version, latestPublishedSchema: null, latestPublishedTitle: null };
@@ -133,7 +135,7 @@ export async function loadForm(initialContent: any, formIdParam?: string | null)
 
   try {
     const [draftResult, publishedResult] = await Promise.all([
-      apiGet<{ schema: any; title: string; updated_at: string | null }>(`/api/forms/${currentId}?status=draft`),
+      apiGet<{ schema: any; title: string; updated_at: string | null; kind?: string }>(`/api/forms/${currentId}?status=draft`),
       apiGet<{ schema: any; title: string; version: number }>(`/api/forms/${currentId}?status=published`),
     ]);
 
@@ -146,6 +148,7 @@ export async function loadForm(initialContent: any, formIdParam?: string | null)
     if (draftResult.ok && draftResult.data) {
       const remoteUpdatedAt = draftResult.data.updated_at ?? null;
       knownServerVersion.set(currentId, remoteUpdatedAt);
+      kind = draftResult.data.kind;
 
       const remoteSchema = draftResult.data.schema;
       const remoteTitle = draftResult.data.title || "";
@@ -182,6 +185,7 @@ export async function loadForm(initialContent: any, formIdParam?: string | null)
     version,
     latestPublishedSchema,
     latestPublishedTitle,
+    kind,
   };
 }
 

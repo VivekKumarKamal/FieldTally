@@ -76,10 +76,24 @@ export const inlineQuestionEnterShortcut = (editor: TiptapEditor, nodeName: stri
   const start = $from.before();
   const end = $from.after();
   const paragraph = state.schema.nodes.paragraph.create();
-  const tr = $from.parent.textContent.trim() === ""
-    ? state.tr.replaceWith(start, end, paragraph)
-    : state.tr.insert(end, paragraph);
-  const nextPos = $from.parent.textContent.trim() === "" ? start + 1 : end + 1;
+  const isEmpty = $from.parent.textContent.trim() === "";
+  // Caret at the start of non-empty text: same as the checkbox/MCQ blocks —
+  // push the whole question down and leave an empty paragraph above it,
+  // instead of always inserting below regardless of where Enter was pressed.
+  const atStart = !isEmpty && $from.parentOffset === 0;
+
+  let tr;
+  let nextPos;
+  if (isEmpty) {
+    tr = state.tr.replaceWith(start, end, paragraph);
+    nextPos = start + 1;
+  } else if (atStart) {
+    tr = state.tr.insert(start, paragraph);
+    nextPos = start + 1;
+  } else {
+    tr = state.tr.insert(end, paragraph);
+    nextPos = end + 1;
+  }
 
   tr.setSelection(TextSelection.create(tr.doc, nextPos));
   editor.view.dispatch(tr);
@@ -97,6 +111,20 @@ export const QuizAnswerBadge = () => (
   </Tooltip>
 );
 
+/** Point value for a graded question. checkboxBlock/multipleChoiceBlock get the
+ *  same pill via a CSS decoration on their title (see quizAnswerPicker.ts) —
+ *  this is the equivalent for numberAnswerBlock, which has no separate title
+ *  node to decorate and is rendered by React already, so a real badge is less
+ *  code than reaching for a decoration. */
+export const QuizPointsBadge = ({ points }: { points: number }) => (
+  <span
+    className="quiz-points-badge"
+    contentEditable={false}
+  >
+    {points} {points === 1 ? "point" : "points"}
+  </span>
+);
+
 export function createSimpleAnswerBlock(config: SimpleAnswerBlockConfig) {
   const Component = (props: NodeViewProps) => (
     <NodeViewWrapper className={config.className} data-required={(props.node.attrs as RequiredAttrs).required ? "true" : undefined}>
@@ -104,6 +132,7 @@ export function createSimpleAnswerBlock(config: SimpleAnswerBlockConfig) {
         <NodeViewContent as="div" className={`${config.titleClassName} outline-none`} />
         {(props.node.attrs as RequiredAttrs).required && <RequiredBadge updateAttributes={props.updateAttributes} />}
         {props.node.attrs.correctAnswer != null && <QuizAnswerBadge />}
+        {props.node.attrs.correctAnswer != null && <QuizPointsBadge points={props.node.attrs.quizPoints ?? 1} />}
       </div>
       {(config.renderField || PlaceholderInput)(props)}
     </NodeViewWrapper>

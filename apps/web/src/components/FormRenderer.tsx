@@ -35,6 +35,20 @@ export function renderInlineContent(content?: any[]): ReactNode[] {
   });
 }
 
+/**
+ * Points a graded question is worth. Only rendered when the caller explicitly
+ * reveals the answer key (export-pdf's "Show marks" toggle) — every
+ * respondent-facing render leaves `revealAnswerKey` false, so this never
+ * reaches a person taking the form.
+ */
+function PointsBadge({ points }: { points: number }) {
+  return (
+    <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full bg-zinc-100 text-zinc-500 text-[10px] font-bold uppercase tracking-wide align-middle">
+      {points} {points === 1 ? "point" : "points"}
+    </span>
+  );
+}
+
 export function extractText(content?: any[]): string {
   if (!content) return "";
   return content.map(n => {
@@ -497,7 +511,7 @@ function OptionSearchField({ value, onChange, disabled }: {
   );
 }
 
-export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors, visibility, isPrinting = false, gpsState, captureLocationForField, formId, uploadState, handleImageUpload, readOnly = false }: {
+export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors, visibility, isPrinting = false, gpsState, captureLocationForField, formId, uploadState, handleImageUpload, readOnly = false, revealAnswerKey = false }: {
   node: any; answers: Record<string, any>; updateAnswer: (id: string, v: any) => void;
   toggleCheckbox: (id: string, opt: string) => void; errors: Record<string, string>;
   visibility: Record<string, boolean>;
@@ -508,6 +522,10 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
   uploadState?: Record<string, { loading: boolean; error: string | null }>;
   handleImageUpload?: (id: string, file: File, formId: string) => void;
   readOnly?: boolean;
+  /** Shows the correct answer and point value on a graded question. Only
+   *  export-pdf's instructor-facing "Show marks" toggle sets this — never a
+   *  respondent-facing render (the public form, the live preview). */
+  revealAnswerKey?: boolean;
 }) {
   // Filter text for searchable choice blocks. Declared unconditionally to keep
   // hook order stable; ignored by every other node type.
@@ -542,7 +560,7 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
     return (
       <blockquote>
         {(node.content || []).map((c: any, i: number) => (
-          <RenderNode key={i} node={c} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} gpsState={gpsState} captureLocationForField={captureLocationForField} formId={formId} uploadState={uploadState} handleImageUpload={handleImageUpload} />
+          <RenderNode key={i} node={c} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} gpsState={gpsState} captureLocationForField={captureLocationForField} formId={formId} uploadState={uploadState} handleImageUpload={handleImageUpload} revealAnswerKey={revealAnswerKey} />
         ))}
       </blockquote>
     );
@@ -558,28 +576,28 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
 
   // ── Bullet list ──
   if (node.type === "bulletList") {
-    return <ul>{(node.content || []).map((li: any, i: number) => <RenderNode key={i} node={li} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} gpsState={gpsState} captureLocationForField={captureLocationForField} formId={formId} uploadState={uploadState} handleImageUpload={handleImageUpload} />)}</ul>;
+    return <ul>{(node.content || []).map((li: any, i: number) => <RenderNode key={i} node={li} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} gpsState={gpsState} captureLocationForField={captureLocationForField} formId={formId} uploadState={uploadState} handleImageUpload={handleImageUpload} revealAnswerKey={revealAnswerKey} />)}</ul>;
   }
 
   // ── Ordered list ──
   if (node.type === "orderedList") {
-    return <ol>{(node.content || []).map((li: any, i: number) => <RenderNode key={i} node={li} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} gpsState={gpsState} captureLocationForField={captureLocationForField} formId={formId} uploadState={uploadState} handleImageUpload={handleImageUpload} />)}</ol>;
+    return <ol>{(node.content || []).map((li: any, i: number) => <RenderNode key={i} node={li} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} gpsState={gpsState} captureLocationForField={captureLocationForField} formId={formId} uploadState={uploadState} handleImageUpload={handleImageUpload} revealAnswerKey={revealAnswerKey} />)}</ol>;
   }
 
   // ── List item ──
   if (node.type === "listItem") {
-    return <li>{(node.content || []).map((c: any, i: number) => <RenderNode key={i} node={c} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} gpsState={gpsState} captureLocationForField={captureLocationForField} formId={formId} uploadState={uploadState} handleImageUpload={handleImageUpload} />)}</li>;
+    return <li>{(node.content || []).map((c: any, i: number) => <RenderNode key={i} node={c} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} gpsState={gpsState} captureLocationForField={captureLocationForField} formId={formId} uploadState={uploadState} handleImageUpload={handleImageUpload} revealAnswerKey={revealAnswerKey} />)}</li>;
   }
 
   // ── Task list ──
   if (node.type === "taskList") {
-    return <ul data-type="taskList">{(node.content || []).map((li: any, i: number) => <RenderNode key={i} node={li} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} gpsState={gpsState} captureLocationForField={captureLocationForField} formId={formId} uploadState={uploadState} handleImageUpload={handleImageUpload} />)}</ul>;
+    return <ul data-type="taskList">{(node.content || []).map((li: any, i: number) => <RenderNode key={i} node={li} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} gpsState={gpsState} captureLocationForField={captureLocationForField} formId={formId} uploadState={uploadState} handleImageUpload={handleImageUpload} revealAnswerKey={revealAnswerKey} />)}</ul>;
   }
   if (node.type === "taskItem") {
     return (
       <li data-checked={node.attrs?.checked ? "true" : "false"}>
         <label><input type="checkbox" readOnly checked={node.attrs?.checked} /></label>
-        <div>{(node.content || []).map((c: any, i: number) => <RenderNode key={i} node={c} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} gpsState={gpsState} captureLocationForField={captureLocationForField} formId={formId} uploadState={uploadState} handleImageUpload={handleImageUpload} />)}</div>
+        <div>{(node.content || []).map((c: any, i: number) => <RenderNode key={i} node={c} answers={answers} updateAnswer={updateAnswer} toggleCheckbox={toggleCheckbox} errors={errors} visibility={visibility} isPrinting={isPrinting} gpsState={gpsState} captureLocationForField={captureLocationForField} formId={formId} uploadState={uploadState} handleImageUpload={handleImageUpload} revealAnswerKey={revealAnswerKey} />)}</div>
       </li>
     );
   }
@@ -589,12 +607,22 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
     const placeholder = node.attrs?.placeholder || "";
     const maxLen = INPUT_LIMITS[node.type];
     const currentVal: string = answers[id] || "";
+    const correctAnswer = node.attrs?.correctAnswer;
+    const showKey = revealAnswerKey && correctAnswer != null;
     return (
       <div id={id ? `field-${id}` : undefined} className={blockClass(node.type)} data-required={required ? "true" : undefined}>
         <div className="question-title-row">
           <div className={`${titleCls(node.type)} outline-none`}>{renderInlineContent(node.content)}</div>
           {required && <span className="required-badge">*</span>}
+          {showKey && <PointsBadge points={node.attrs?.quizPoints ?? 1} />}
         </div>
+        {showKey && (
+          <p className="text-xs font-semibold text-emerald-600 -mt-1 mb-1.5">
+            {correctAnswer.type === "range"
+              ? `Correct range: ${correctAnswer.min ?? "−∞"}–${correctAnswer.max ?? "∞"}`
+              : `Correct answer: ${correctAnswer.value}`}
+          </p>
+        )}
         {isPrinting && placeholder && (
           <p className="text-xs text-zinc-500 italic mt-1 mb-1.5">
             Note: {placeholder}
@@ -752,6 +780,7 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
         <div data-type="checkbox-title">
           {renderInlineContent(titleNode?.content)}
           {required && <span className="required-badge ml-2">*</span>}
+          {revealAnswerKey && node.attrs?.correctAnswer != null && <PointsBadge points={node.attrs?.quizPoints ?? 1} />}
         </div>
         {searchable && (
           <OptionSearchField value={optionQuery} onChange={setOptionQuery} disabled={readOnly} />
@@ -770,6 +799,9 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
                 {isChecked && <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
               </div>
               <div className="option-content" style={{ cursor: readOnly ? "not-allowed" : "pointer", color: text.trim() ? "inherit" : "#adb5bd" }}>{displayTxt}</div>
+              {revealAnswerKey && node.attrs?.correctAnswer != null && (node.attrs.correctAnswer as string[]).includes(displayTxt) && (
+                <span className="ml-2 text-xs font-semibold text-emerald-600 whitespace-nowrap">✓ Correct</span>
+              )}
             </div>
           );
         })}
@@ -793,6 +825,7 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
         <div data-type="multiple-choice-title">
           {renderInlineContent(titleNode?.content)}
           {required && <span className="required-badge ml-2">*</span>}
+          {revealAnswerKey && node.attrs?.correctAnswer != null && <PointsBadge points={node.attrs?.quizPoints ?? 1} />}
         </div>
         {searchable && (
           <OptionSearchField value={optionQuery} onChange={setOptionQuery} disabled={readOnly} />
@@ -811,6 +844,9 @@ export function RenderNode({ node, answers, updateAnswer, toggleCheckbox, errors
                 {isSelected && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "white" }} />}
               </div>
               <div className="option-content" style={{ cursor: readOnly ? "not-allowed" : "pointer", color: text.trim() ? "inherit" : "#adb5bd" }}>{displayTxt}</div>
+              {revealAnswerKey && node.attrs?.correctAnswer === displayTxt && (
+                <span className="ml-2 text-xs font-semibold text-emerald-600 whitespace-nowrap">✓ Correct</span>
+              )}
             </div>
           );
         })}

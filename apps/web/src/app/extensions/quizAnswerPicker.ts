@@ -40,6 +40,23 @@ function buildDecorations(doc: ProseMirrorNode): DecorationSet {
   doc.descendants((node, pos) => {
     const childType = OPTION_CHILD[node.type.name];
 
+    // Points badge on multipleChoice/checkbox questions, attached to the TITLE
+    // node (not the block) via an attribute-only decoration — no DOM insertion,
+    // so it can't trip the trailing-<br> issue a widget causes. The CSS renders
+    // it as a real ::before in the title's own inline flow, the same way the
+    // required asterisk already renders as an ::after — it wraps with long text
+    // instead of floating over it. An earlier absolutely-positioned version
+    // pinned to the block's top-right corner overlapped wrapped question text.
+    if (childType && node.attrs.correctAnswer != null) {
+      const points = node.attrs.quizPoints ?? 1;
+      const title = node.firstChild;
+      if (title) {
+        decorations.push(
+          Decoration.node(pos + 1, pos + 1 + title.nodeSize, {
+            "data-quiz-points": `${points} ${points === 1 ? "point" : "points"}`,
+          })
+        );
+      }
     // Points badge on any graded question, whether or not it has options.
     // Attached to the BLOCK, not the title: a widget inside the title makes
     // ProseMirror append a trailing <br> (the widget becomes the last inline

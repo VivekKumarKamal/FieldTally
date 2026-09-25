@@ -18,6 +18,12 @@ function ExportPdfContent() {
   const [formSchema, setFormSchema] = useState<any>(null);
   const [formTitle, setFormTitle] = useState("");
 
+  // Quiz forms default to showing the answer key/marks on export — an
+  // instructor printing a quiz almost always wants it, and it is one click to
+  // turn off. Non-quiz forms never show this control at all.
+  const isQuiz = formSchema?.attrs?.quizMode === true;
+  const [showAnswerKey, setShowAnswerKey] = useState(true);
+
   // Settings
   const [enablePageNumbers, setEnablePageNumbers] = useState(true);
   const [enableHeaderTitle, setEnableHeaderTitle] = useState(true);
@@ -424,6 +430,7 @@ function ExportPdfContent() {
                         errors={{}}
                         visibility={visibility}
                         isPrinting={true}
+                        revealAnswerKey={isQuiz && showAnswerKey}
                       />
                     </div>
                   ))}
@@ -486,6 +493,7 @@ function ExportPdfContent() {
                       errors={{}}
                       visibility={visibility}
                       isPrinting={true}
+                      revealAnswerKey={isQuiz && showAnswerKey}
                     />
                   ))}
                 </div>
@@ -568,6 +576,30 @@ function ExportPdfContent() {
             </div>
 
             <div className="h-px bg-zinc-100" />
+
+            {isQuiz && (
+              <>
+                {/* Quiz answer key — on by default, one click to hide for a blank test paper */}
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-xs font-semibold text-zinc-700">Show Marks</span>
+                    <span className="text-[10px] text-zinc-400">Print the correct answers and point values</span>
+                  </div>
+                  <button
+                    onClick={() => setShowAnswerKey(p => !p)}
+                    className={`w-10 h-6 rounded-full p-1 cursor-pointer transition-colors outline-none ${showAnswerKey ? "bg-blue-500" : "bg-zinc-200"
+                      }`}
+                  >
+                    <div
+                      className={`w-4 h-4 bg-white rounded-full transition-transform ${showAnswerKey ? "translate-x-4" : "translate-x-0"
+                        }`}
+                    />
+                  </button>
+                </div>
+
+                <div className="h-px bg-zinc-100" />
+              </>
+            )}
 
             {/* Input Style */}
             <div className="flex flex-col gap-3">

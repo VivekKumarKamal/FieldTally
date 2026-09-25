@@ -79,6 +79,7 @@ export interface Database {
           created_at: string | null
           updated_at: string | null
           access_open: boolean | null
+          kind: 'form' | 'exercise' | 'exercise_template'
         }
         Insert: {
           id?: string
@@ -89,6 +90,7 @@ export interface Database {
           created_at?: string | null
           updated_at?: string | null
           access_open?: boolean | null
+          kind?: 'form' | 'exercise' | 'exercise_template'
         }
         Update: {
           id?: string
@@ -99,6 +101,7 @@ export interface Database {
           created_at?: string | null
           updated_at?: string | null
           access_open?: boolean | null
+          kind?: 'form' | 'exercise' | 'exercise_template'
         }
         Relationships: []
       }

@@ -57,7 +57,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ form
 
       const { data: draftRow, error: formErr } = await supabase
         .from("forms")
-        .select("id, draft_schema, status, access_open, created_by, created_at, updated_at")
+        .select("id, draft_schema, status, access_open, created_by, created_at, updated_at, kind")
         .eq("id", formId)
         .maybeSingle();
 
@@ -76,6 +76,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ form
         created_by: draftRow.created_by,
         created_at: draftRow.created_at,
         updated_at: draftRow.updated_at,
+        kind: draftRow.kind,
       });
     }
 
@@ -136,6 +137,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ form
       access_open: form.access_open,
       role,
       created_at: versionData.created_at,
+      kind: form.kind,
     });
   } catch (err) {
     return serverError("/api/forms/[formId] GET", err);

@@ -11,6 +11,32 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+@keyframes class-entry-pop-in {
+  0% { transform: scale(0.5) translateY(0); opacity: 0; }
+  40% { transform: scale(1.2) translateY(-10px); opacity: 1; }
+  100% { transform: scale(1) translateY(-60px); opacity: 0; }
+}
+.animate-class-entry-pop {
+  animation: class-entry-pop-in 0.9s ease-out forwards;
+}
+
+@keyframes class-entry-count-bounce {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+.animate-class-entry-count-bounce {
+  animation: class-entry-count-bounce 0.4s ease-out;
+}
+
+@keyframes class-entry-button-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(236, 72, 153, 0.5); }
+  50% { box-shadow: 0 0 0 18px rgba(236, 72, 153, 0); }
+}
+.animate-class-entry-button-pulse {
+  animation: class-entry-button-pulse 2s infinite;
+}
+
 .is-empty:not(:has(.is-empty))::before {
   content: attr(data-placeholder);
   float: left;
@@ -931,6 +957,35 @@ body {
   content: none;
 }
 
+/* Per-question mark allocation, from the quizAnswerPicker decoration on the
+   title node. A real ::before in the title's own inline flow — like the
+   required asterisk's ::after just below — so it wraps with long question text
+   instead of floating over it. An earlier absolutely-positioned version pinned
+   to the block's corner overlapped wrapped text (see git history for why). */
+.quiz-mode-active .tiptap:not(.form-renderer) div[data-type="checkbox-title"][data-quiz-points]::before,
+.quiz-mode-active .tiptap:not(.form-renderer) div[data-type="multiple-choice-title"][data-quiz-points]::before {
+  content: attr(data-quiz-points);
+  display: inline-flex;
+  margin-right: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background-color: #f4f4f5;
+  color: #52525b;
+  border: 1px solid #e4e4e7;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  vertical-align: middle;
+  user-select: none;
+}
+
+/* Same pill, rendered by React for numberAnswerBlock (see QuizPointsBadge). */
+.tiptap:not(.form-renderer) .quiz-points-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
 /* Per-question mark allocation, from the quizAnswerPicker decorations.
    Absolutely positioned so it never joins the title's inline flow — that is what
    pushed the required asterisk onto its own line. */

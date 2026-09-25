@@ -1,17 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { supabase } from "../../lib/supabase";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-export default function SignUp() {
+function SignUpForm() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTarget = searchParams?.get("redirect") || "/dashboard";
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,14 +40,14 @@ export default function SignUp() {
         name,
         email,
       });
-      router.push("/dashboard");
+      router.push(redirectTarget);
     }
   };
 
   const handleGoogleSignIn = async () => {
     await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/dashboard` },
+      options: { redirectTo: `${window.location.origin}${redirectTarget}` },
     });
   };
 
@@ -129,11 +131,22 @@ export default function SignUp() {
 
         <p className="mt-6 text-center text-sm text-zinc-500">
           Already have an account?{" "}
-          <Link href="/login" className="text-blue-600 hover:text-blue-700 font-medium">
+          <Link
+            href={`/login${redirectTarget !== "/dashboard" ? `?redirect=${encodeURIComponent(redirectTarget)}` : ""}`}
+            className="text-blue-600 hover:text-blue-700 font-medium"
+          >
             Sign in
           </Link>
         </p>
       </div>
     </div>
+  );
+}
+
+export default function SignUp() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-zinc-50" />}>
+      <SignUpForm />
+    </Suspense>
   );
 }

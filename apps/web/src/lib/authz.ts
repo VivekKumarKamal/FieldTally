@@ -26,6 +26,7 @@ export interface FormAccessContext {
   status: string | null;
   access_open: boolean | null;
   created_by: string | null;
+  kind?: string;
 }
 
 /** Roles that imply the holder is trusted with the form's contents. */
