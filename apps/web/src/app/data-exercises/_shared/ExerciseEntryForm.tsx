@@ -37,11 +37,11 @@ function GpsField({ value, onChange }: { value: any; onChange: (v: any) => void 
         type="button"
         onClick={capture}
         disabled={loading}
-        className="px-3 py-2 rounded-md border border-[#16140F] bg-white text-[#16140F] text-sm font-medium hover:bg-[#16140F] hover:text-white transition-colors disabled:opacity-50"
+        className="px-3 py-2 rounded-md border border-(--de-ink) bg-(--de-surface) text-(--de-ink) text-sm font-medium hover:bg-(--de-ink) hover:text-(--de-paper) transition-colors disabled:opacity-50"
       >
         {loading ? "Locating..." : value ? "Update Location" : "Capture Location"}
       </button>
-      {value && <span className="text-xs font-mono text-[#6B665C]">{value.lat.toFixed(4)}, {value.lng.toFixed(4)}</span>}
+      {value && <span className="text-xs font-mono text-(--de-muted)">{value.lat.toFixed(4)}, {value.lng.toFixed(4)}</span>}
       {error && <span className="text-xs text-red-500">{error}</span>}
     </div>
   );
@@ -71,7 +71,7 @@ function SignatureField({ value, onChange }: { value: any; onChange: (v: any) =>
       placeholder="Type your name to sign"
       value={value || ""}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full px-3 py-2.5 bg-white border border-[#DDD8CC] rounded-md text-base italic font-serif text-[#16140F] outline-none focus:border-[#16140F]"
+      className="w-full px-3 py-2.5 bg-(--de-surface) border border-(--de-line) rounded-md text-base italic font-serif text-(--de-ink) outline-none focus:border-(--de-ink)"
     />
   );
 }
@@ -107,9 +107,9 @@ export default function ExerciseEntryForm({
     <form onSubmit={handleSubmit} className="flex flex-col gap-5">
       {fields.map((field) => (
         <div key={field.id} className="text-left">
-          <label className="block text-sm font-medium text-[#16140F] mb-1.5">
+          <label className="block text-sm font-medium text-(--de-ink) mb-1.5">
             {field.label}
-            {field.required && <span className="text-[#FF5B1F]"> *</span>}
+            {field.required && <span className="text-(--de-accent)"> *</span>}
           </label>
 
           {field.type === "longAnswerBlock" ? (
@@ -130,8 +130,8 @@ export default function ExerciseEntryForm({
                     key={opt}
                     className={`cursor-pointer select-none px-3.5 py-2 rounded-md border text-sm transition-colors ${
                       checked
-                        ? "bg-[#16140F] border-[#16140F] text-white"
-                        : "bg-white border-[#DDD8CC] text-[#16140F] hover:border-[#16140F]"
+                        ? "bg-(--de-ink) border-(--de-ink) text-(--de-paper)"
+                        : "bg-(--de-surface) border-(--de-line) text-(--de-ink) hover:border-(--de-ink)"
                     }`}
                   >
                     <input
@@ -169,7 +169,7 @@ export default function ExerciseEntryForm({
 
       <button
         type="submit"
-        className="mt-1 w-full rounded-lg bg-[#FF5B1F] text-[#16140F] font-semibold text-lg py-4 border-2 border-[#16140F] shadow-[0_5px_0_#16140F] active:translate-y-[5px] active:shadow-none transition-[transform,box-shadow] duration-75"
+        className="mt-1 w-full rounded-lg bg-(--de-accent) text-(--de-on-accent) font-semibold text-lg py-4 border-2 border-(--de-edge) shadow-[0_5px_0_var(--de-edge)] active:translate-y-[5px] active:shadow-none transition-[transform,box-shadow] duration-75"
       >
         {submitLabel}
       </button>
@@ -178,4 +178,4 @@ export default function ExerciseEntryForm({
 }
 
 const INPUT_CLASS =
-  "w-full px-3 py-2.5 bg-white border border-[#DDD8CC] rounded-md text-sm text-[#16140F] outline-none focus:border-[#16140F] focus:ring-2 focus:ring-[#16140F]/10";
+  "w-full px-3 py-2.5 bg-(--de-surface) border border-(--de-line) rounded-md text-sm text-(--de-ink) outline-none focus:border-(--de-ink) focus:ring-2 focus:ring-(--de-ink)/10";

@@ -48,7 +48,8 @@ import {
   updateFormMemberRole
 } from "../../lib/formActions";
 import { TEMPLATES, getClonedTemplateSchema } from "../../lib/templates";
-import { extractExerciseFields, type ChartType } from "../../lib/exerciseSchema";
+import { extractExerciseFields } from "../../lib/exerciseSchema";
+import { CHART_LABELS, chartOptionsFor, dataKindOf, resolveChartType } from "../../lib/exerciseCharts";
 import FormRenderer from "../../components/FormRenderer";
 
 import { defaultExtensions } from "./extension";
@@ -969,24 +970,34 @@ function FormEditorContent() {
                       }
                       return (
                         <div className="flex flex-col gap-3 pt-1 border-t border-zinc-100">
-                          {fields.map((field) => (
-                            <div key={field.id} className="flex items-center justify-between gap-3">
-                              <span className="text-xs text-zinc-700 truncate">{field.label}</span>
-                              <select
-                                value={chartConfig[field.id] || "none"}
-                                onChange={(e) =>
-                                  updateDocAttr("chartConfig", { ...chartConfig, [field.id]: e.target.value as ChartType })
-                                }
-                                className="text-xs border border-zinc-200 rounded-md px-2 py-1 bg-white"
-                              >
-                                <option value="none">No chart</option>
-                                <option value="bar">Bar</option>
-                                <option value="pie">Pie</option>
-                                <option value="line">Line</option>
-                                <option value="number">Number</option>
-                              </select>
-                            </div>
-                          ))}
+                          <span className="text-[10px] text-zinc-400">
+                            Default chart for each question. Whoever runs the exercise can still switch it.
+                          </span>
+                          {fields.map((field) => {
+                            const kind = dataKindOf(field.type);
+                            const current = kind ? resolveChartType(kind, chartConfig[field.id]) ?? "none" : null;
+                            return (
+                              <div key={field.id} className="flex items-center justify-between gap-3">
+                                <span className="text-xs text-zinc-700 truncate">{field.label}</span>
+                                {kind ? (
+                                  <select
+                                    value={current!}
+                                    onChange={(e) => updateDocAttr("chartConfig", { ...chartConfig, [field.id]: e.target.value })}
+                                    className="text-xs border border-zinc-200 rounded-md px-2 py-1 bg-white"
+                                  >
+                                    {chartOptionsFor(kind).map((t) => (
+                                      <option key={t} value={t}>
+                                        {CHART_LABELS[t]}
+                                      </option>
+                                    ))}
+                                    <option value="none">Don&apos;t chart</option>
+                                  </select>
+                                ) : (
+                                  <span className="text-[11px] text-zinc-400 shrink-0">Not charted</span>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       );
                     })()}

@@ -7,8 +7,18 @@ import { supabase } from "@/lib/supabase";
 import { apiGet, apiSend } from "@/lib/apiClient";
 import { claimLocalRun, finishExerciseInstance } from "@/lib/exerciseInstances";
 import { extractExerciseFields, getExerciseSettings, type ExerciseField, type ChartConfig } from "@/lib/exerciseSchema";
-import EntryChart, { type ChartMode } from "../../_shared/EntryChart";
-import FieldChart from "../../_shared/FieldChart";
+import {
+  dataKindOf,
+  resolveChartType,
+  summarize,
+  NOT_EXPORTABLE,
+  type ChartTypeId,
+  type DataKind,
+} from "@/lib/exerciseCharts";
+import * as Popover from "@radix-ui/react-popover";
+import { Check, Cloud, CloudUpload, FileSpreadsheet, Flag, ImageDown, Palette, type LucideIcon } from "lucide-react";
+import QuestionPanel, { type PanelItem } from "../../_shared/QuestionPanel";
+import { DEFAULT_THEME, THEMES, THEME_KEY, ThemeContext, themeVars, type ExerciseTheme } from "../../_shared/theme";
 import ExerciseEntryForm from "../../_shared/ExerciseEntryForm";
 import { exportEntriesToExcel, exportSvgAsPng } from "../../_shared/export";
 
@@ -27,9 +37,20 @@ interface LocalBundle {
 }
 
 const POLL_MS = 4000;
+const SPLIT_KEY = "ft_exercise_split";
+const ARRIVALS_ID = "__arrivals";
+
+interface RunView {
+  active: string | null;
+  types: Record<string, ChartTypeId>;
+}
 
 function localKey(runId: string) {
   return `ft_exercise_run_${runId}`;
+}
+
+function viewKey(runId: string) {
+  return `ft_exercise_view_${runId}`;
 }
 
 const fmtTime = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -44,7 +65,7 @@ function Clock() {
   if (!now) return null;
   return (
     <div className="flex items-baseline gap-3">
-      <span className="hidden sm:inline text-xs uppercase tracking-[0.14em] text-[#6B665C]">
+      <span className="hidden sm:inline text-xs uppercase tracking-[0.14em] text-(--de-muted)">
         {now.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })}
       </span>
       <span className="font-mono text-lg sm:text-xl font-medium tabular-nums">
@@ -57,7 +78,7 @@ function Clock() {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
-      <div className="text-[11px] uppercase tracking-[0.14em] text-[#6B665C]">{label}</div>
+      <div className="text-[11px] uppercase tracking-[0.14em] text-(--de-muted)">{label}</div>
       <div className="font-mono text-base sm:text-lg tabular-nums truncate">{value}</div>
     </div>
   );
@@ -81,11 +102,46 @@ function RunnerPageInner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [chartHidden, setChartHidden] = useState(false);
-  const [chartMode, setChartMode] = useState<ChartMode>("cumulative");
-  const [activeTab, setActiveTab] = useState<string>("time");
+  const [view, setView] = useState<RunView>({ active: null, types: {} });
+  const [leftWidth, setLeftWidth] = useState<number | null>(null);
   const [pops, setPops] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
+
+  // The facilitator's question + chart-type choices survive a refresh; the panel width is per-device.
+  useEffect(() => {
+    if (!runId) return;
+    try {
+      const saved = localStorage.getItem(viewKey(runId));
+      if (saved) setView(JSON.parse(saved));
+      const w = Number(localStorage.getItem(SPLIT_KEY));
+      if (w > 0) setLeftWidth(w);
+    } catch {}
+  }, [runId]);
+
+  // Colour theme: a per-device preference (the projector laptop keeps its pick across runs).
+  const [themeId, setThemeId] = useState(DEFAULT_THEME.id);
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(THEME_KEY);
+      if (saved && THEMES.some((t) => t.id === saved)) setThemeId(saved);
+    } catch {}
+  }, []);
+  const theme = THEMES.find((t) => t.id === themeId) ?? DEFAULT_THEME;
+  function pickTheme(id: string) {
+    setThemeId(id);
+    try {
+      localStorage.setItem(THEME_KEY, id);
+    } catch {}
+  }
+
+  function updateView(next: RunView) {
+    setView(next);
+    try {
+      localStorage.setItem(viewKey(runId), JSON.stringify(next));
+    } catch {}
+  }
 
   const loadFromContent = useCallback((docContent: any) => {
     setContent(docContent);
@@ -245,15 +301,75 @@ function RunnerPageInner() {
 
   const timestamps = useMemo(() => entries.map((e) => e.loggedAt).sort((a, b) => a - b), [entries]);
 
+  // Questions first (the actual answers), arrivals last. A template with no
+  // questions only has arrivals, which then opens on arrivals-per-minute.
+  const items = useMemo(() => {
+    const out: (PanelItem & { field: ExerciseField | null; defaultType: ChartTypeId })[] = [];
+    for (const f of fields) {
+      const kind = dataKindOf(f.type);
+      const defaultType = kind && resolveChartType(kind, chartConfig[f.id]);
+      if (kind && defaultType) out.push({ id: f.id, kind, title: f.label, field: f, defaultType });
+    }
+    out.push({ id: ARRIVALS_ID, kind: "arrival" as DataKind, title: "When did the entries come in?", field: null, defaultType: "histogram" });
+    return out;
+  }, [fields, chartConfig]);
+
+  const activeIndex = Math.max(0, items.findIndex((i) => i.id === view.active));
+  const activeItem = items[activeIndex]!;
+  const storedType = view.types[activeItem.id];
+  const activeType = storedType && resolveChartType(activeItem.kind, storedType) === storedType ? storedType : activeItem.defaultType;
+  const summary = useMemo(() => summarize(activeItem.kind, activeItem.field, entries), [activeItem, entries]);
+
+  const widthRef = useRef<number | null>(null);
+  const clampWidth = (w: number, total: number) => Math.round(Math.min(Math.max(w, 240), total * 0.55));
+  function saveWidth(w: number | null) {
+    try {
+      if (w === null) localStorage.removeItem(SPLIT_KEY);
+      else localStorage.setItem(SPLIT_KEY, String(w));
+    } catch {}
+  }
+  function startResize(e: React.PointerEvent<HTMLDivElement>) {
+    const main = mainRef.current;
+    if (!main) return;
+    e.preventDefault();
+    const rect = main.getBoundingClientRect();
+    const move = (ev: PointerEvent) => {
+      widthRef.current = clampWidth(ev.clientX - rect.left, rect.width);
+      setLeftWidth(widthRef.current);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.body.style.cursor = "";
+      saveWidth(widthRef.current);
+    };
+    document.body.style.cursor = "col-resize";
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+  function nudgeResize(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    const main = mainRef.current;
+    if (!main) return;
+    e.preventDefault();
+    const rect = main.getBoundingClientRect();
+    const current = leftWidth ?? rect.width * 0.36;
+    const next = clampWidth(current + (e.key === "ArrowLeft" ? -24 : 24), rect.width);
+    setLeftWidth(next);
+    saveWidth(next);
+  }
+
   if (loading) {
     return (
-      <div className="h-dvh flex items-center justify-center bg-[#F5F3EE] text-sm text-[#6B665C]">Loading exercise…</div>
+      <div style={themeVars(theme)} className="h-dvh flex items-center justify-center bg-(--de-paper) text-sm text-(--de-muted)">
+        Loading exercise…
+      </div>
     );
   }
 
   if (error) {
     return (
-      <div className="h-dvh flex flex-col items-center justify-center gap-4 text-center px-4 bg-[#F5F3EE] text-[#16140F]">
+      <div style={themeVars(theme)} className="h-dvh flex flex-col items-center justify-center gap-4 text-center px-4 bg-(--de-paper) text-(--de-ink)">
         <p>{error}</p>
         <Link href="/data-exercises" className="text-sm font-medium underline underline-offset-4">
           Back to Data Exercises
@@ -268,50 +384,109 @@ function RunnerPageInner() {
   const spanMin = first && last ? Math.max(1, (last - first) / 60_000) : 0;
   const perMin = count > 1 ? (count / spanMin).toFixed(1) : "—";
 
-  const fieldTabs = fields.filter((f) => chartConfig[f.id] && chartConfig[f.id] !== "none");
   const chartsAllowed = liveDuringExercise || status === "finished";
-  const activeField = fieldTabs.find((f) => f.id === activeTab);
+  const canDownloadChart = chartsAllowed && !chartHidden && summary.answered > 0 && !NOT_EXPORTABLE.has(activeType);
+
+  function downloadChart() {
+    const svg = panelRef.current?.querySelector<SVGSVGElement>("svg.recharts-surface, svg.chart-surface");
+    if (!svg) return;
+    exportSvgAsPng(svg, `${title || "exercise"} - ${activeItem.title}.png`, {
+      title: activeItem.title,
+      subtitle: [title, summary.takeaway].filter(Boolean).join(" · "),
+      background: theme.surface,
+      ink: theme.ink,
+      muted: theme.muted,
+    });
+  }
 
   return (
+    <ThemeContext.Provider value={theme}>
     <div
-      className="h-dvh flex flex-col overflow-hidden bg-[#F5F3EE] text-[#16140F]"
-      style={{ fontFamily: "var(--font-geist-sans)" }}
+      className="h-dvh flex flex-col overflow-hidden bg-(--de-paper) text-(--de-ink) transition-colors duration-300"
+      style={{ ...themeVars(theme), fontFamily: "var(--font-geist-sans)" }}
     >
-      {/* Top bar */}
-      <header className="shrink-0 h-14 px-4 sm:px-6 flex items-center gap-3 sm:gap-4 border-b border-[#DDD8CC]">
+      {/* Top bar: everything the facilitator acts on lives up here, so the page below is all data. */}
+      <header className="shrink-0 h-14 pl-3 pr-3 sm:px-6 flex items-center gap-2 sm:gap-3 border-b border-(--de-line)">
         <Link
           href="/data-exercises"
-          className="text-sm text-[#6B665C] hover:text-[#16140F] transition-colors whitespace-nowrap"
+          aria-label="Back to Data Exercises"
+          className="text-sm text-(--de-muted) hover:text-(--de-ink) transition-colors whitespace-nowrap"
         >
-          ← Exercises
+          ←<span className="hidden sm:inline"> Exercises</span>
         </Link>
-        <span className="h-5 w-px bg-[#DDD8CC]" aria-hidden />
-        <h1 className="font-semibold truncate">{title}</h1>
+        <span className="h-5 w-px bg-(--de-line)" aria-hidden />
+        <h1 className="font-semibold truncate min-w-0">{title}</h1>
         {status === "live" ? (
-          <span className="shrink-0 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#1F9D55]">
+          <span className="shrink-0 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-(--de-live)">
             <span className="relative flex w-2 h-2">
-              <span className="absolute inset-0 rounded-full bg-[#1F9D55] animate-ping opacity-60" />
-              <span className="relative w-2 h-2 rounded-full bg-[#1F9D55]" />
+              <span className="absolute inset-0 rounded-full bg-(--de-live) animate-ping opacity-60" />
+              <span className="relative w-2 h-2 rounded-full bg-(--de-live)" />
             </span>
-            Live
+            <span className="hidden sm:inline">Live</span>
           </span>
         ) : (
-          <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B665C]">Finished</span>
+          <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.14em] text-(--de-muted)">Finished</span>
         )}
-        <div className="ml-auto">
-          <Clock />
+
+        <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+          {status === "live" ? (
+            <BarButton icon={Flag} label="Finish" longLabel="Finish exercise" onClick={handleFinish} strong />
+          ) : (
+            <>
+              <BarButton
+                icon={FileSpreadsheet}
+                label="Excel"
+                longLabel="Download Excel"
+                onClick={() => exportEntriesToExcel(entries, fields, `${title || "exercise"}.xlsx`)}
+                strong
+              />
+              <BarButton
+                icon={ImageDown}
+                label="Chart"
+                longLabel="Download chart"
+                onClick={downloadChart}
+                disabled={!canDownloadChart}
+                tip={canDownloadChart ? "Download this chart as an image" : "This view can't be saved as an image. Use Download Excel."}
+              />
+            </>
+          )}
+          {isLocal ? (
+            <BarButton
+              icon={CloudUpload}
+              label={saving ? "Saving…" : "Save"}
+              longLabel={saving ? "Saving…" : "Save to cloud"}
+              onClick={handleSaveToCloud}
+              disabled={saving}
+              tip="Only saved on this device right now. Sign in to keep it in your account."
+            />
+          ) : (
+            <span className="hidden md:inline-flex items-center gap-1.5 text-xs text-(--de-muted) px-1" title="Saved to your account">
+              <Cloud size={14} /> Saved
+            </span>
+          )}
+          <span className="h-5 w-px bg-(--de-line) mx-0.5" aria-hidden />
+          <ThemePicker current={theme} onPick={pickTheme} />
+          <div className="hidden lg:block pl-2">
+            <Clock />
+          </div>
         </div>
       </header>
 
-      <main className="flex-1 min-h-0 grid grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] lg:grid-rows-1 lg:grid-cols-[minmax(340px,5fr)_minmax(0,7fr)]">
-        {/* Left: count + action */}
-        <section className="min-h-0 flex flex-col gap-5 p-4 sm:p-6 lg:p-10 border-b lg:border-b-0 lg:border-r border-[#DDD8CC] max-h-[48dvh] lg:max-h-none overflow-y-auto">
+      <main
+        ref={mainRef}
+        className="flex-1 min-h-0 grid grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] lg:grid-rows-1 lg:grid-cols-[var(--left-w)_minmax(0,1fr)]"
+        style={{ "--left-w": leftWidth ? `${leftWidth}px` : "minmax(300px,36%)" } as React.CSSProperties}
+      >
+        {/* Left: count + action. A size container, so the big number scales with however wide it's dragged. */}
+        <section className="@container relative min-h-0 min-w-0 flex flex-col gap-5 p-4 sm:p-6 lg:p-8 border-b lg:border-b-0 lg:border-r border-(--de-line) max-h-[42dvh] lg:max-h-none overflow-y-auto">
           <div>
-            <div className="text-xs uppercase tracking-[0.14em] text-[#6B665C]">Entries logged</div>
+            <div className="text-xs uppercase tracking-[0.14em] text-(--de-muted)">Entries logged</div>
             <div
               key={count}
               className={`font-mono font-semibold tabular-nums leading-[0.85] tracking-tight ${
-                oneTap || status === "finished" ? "text-[clamp(4.5rem,22vh,15rem)]" : "text-[clamp(3.5rem,11vh,7rem)]"
+                oneTap || status === "finished"
+                  ? "text-[clamp(3rem,min(34cqw,9vh),15rem)] lg:text-[clamp(3rem,min(34cqw,22vh),15rem)]"
+                  : "text-[clamp(2.5rem,min(20cqw,8vh),7rem)] lg:text-[clamp(2.5rem,min(20cqw,11vh),7rem)]"
               }`}
               style={count > 0 ? { animation: "de-count-tick 280ms ease-out" } : undefined}
             >
@@ -319,7 +494,7 @@ function RunnerPageInner() {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4 pt-4 border-t border-[#DDD8CC]">
+          <div className="grid grid-cols-2 @[19rem]:grid-cols-3 gap-4 pt-4 border-t border-(--de-line)">
             <Stat label="First" value={first ? fmtTime(first) : "—"} />
             <Stat label="Latest" value={last ? fmtTime(last) : "—"} />
             <Stat label="Per min" value={perMin} />
@@ -330,9 +505,9 @@ function RunnerPageInner() {
               <div className="relative">
                 <button
                   onClick={() => handleLogEntry({})}
-                  className="w-full rounded-xl bg-[#FF5B1F] text-[#16140F] border-2 border-[#16140F] shadow-[0_8px_0_#16140F] active:translate-y-[8px] active:shadow-none transition-[transform,box-shadow] duration-75 h-[clamp(5.5rem,20vh,11rem)] flex flex-col items-center justify-center gap-1 select-none"
+                  className="w-full rounded-xl bg-(--de-accent) text-(--de-on-accent) border-2 border-(--de-edge) shadow-[0_8px_0_var(--de-edge)] active:translate-y-[8px] active:shadow-none transition-[transform,box-shadow] duration-75 h-[clamp(4.5rem,11vh,11rem)] lg:h-[clamp(5.5rem,20vh,11rem)] flex flex-col items-center justify-center gap-1 select-none"
                 >
-                  <span className="text-[clamp(1.75rem,5vh,3rem)] font-bold tracking-tight leading-none">Log entry</span>
+                  <span className="text-[clamp(1.5rem,min(10cqw,5vh),3rem)] font-bold tracking-tight leading-none">Log entry</span>
                   <span className="hidden sm:block text-xs font-medium uppercase tracking-[0.14em] opacity-70">
                     tap or press space
                   </span>
@@ -340,7 +515,7 @@ function RunnerPageInner() {
                 {pops.map((id) => (
                   <span
                     key={id}
-                    className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 font-mono font-bold text-2xl text-[#FF5B1F]"
+                    className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 font-mono font-bold text-2xl text-(--de-accent)"
                     style={{ animation: "class-entry-pop-in 0.9s ease-out forwards" }}
                     aria-hidden
                   >
@@ -355,9 +530,9 @@ function RunnerPageInner() {
             )}
 
             {status === "finished" && (
-              <div className="rounded-xl border border-[#DDD8CC] bg-white p-5">
+              <div className="hidden lg:block rounded-xl border border-(--de-line) bg-(--de-surface) p-5">
                 <div className="text-sm font-semibold">Exercise finished</div>
-                <p className="text-sm text-[#6B665C] mt-1">
+                <p className="text-sm text-(--de-muted) mt-1">
                   {count} {count === 1 ? "entry" : "entries"}
                   {first && last ? ` over ${Math.round(spanMin)} min` : ""}. Export the data or run it again from the
                   exercises page.
@@ -365,134 +540,146 @@ function RunnerPageInner() {
               </div>
             )}
           </div>
+
+          {/* Drag to resize (desktop). Double-click resets. */}
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize logging panel"
+            tabIndex={0}
+            onPointerDown={startResize}
+            onKeyDown={nudgeResize}
+            onDoubleClick={() => {
+              setLeftWidth(null);
+              saveWidth(null);
+            }}
+            title="Drag to resize · double-click to reset"
+            className="group hidden lg:block absolute top-0 right-0 translate-x-1/2 h-full w-3 cursor-col-resize z-10 touch-none outline-none"
+          >
+            <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent group-hover:bg-(--de-ink) group-focus-visible:bg-(--de-ink) transition-colors" />
+            <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-10 w-1.5 rounded-full bg-(--de-line) group-hover:bg-(--de-ink) group-focus-visible:bg-(--de-ink) transition-colors" />
+          </div>
         </section>
 
-        {/* Right: charts */}
-        <section className="min-h-0 flex flex-col gap-3 p-4 sm:p-6 lg:p-10">
-          <div className="shrink-0 flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-1 overflow-x-auto" role="tablist">
-              {[{ id: "time", label: "Over time" }, ...fieldTabs.map((f) => ({ id: f.id, label: f.label }))].map((tab) => (
+        <QuestionPanel
+          items={items}
+          activeIndex={activeIndex}
+          onActiveIndexChange={(i) => updateView({ ...view, active: items[i]!.id })}
+          type={activeType}
+          onTypeChange={(t) => updateView({ ...view, active: activeItem.id, types: { ...view.types, [activeItem.id]: t } })}
+          summary={summary}
+          total={count}
+          locked={!chartsAllowed}
+          hidden={chartHidden}
+          onHiddenChange={setChartHidden}
+          canHide={status === "live"}
+          chartRef={panelRef}
+        />
+      </main>
+    </div>
+    </ThemeContext.Provider>
+  );
+}
+
+/** Top-bar action: icon-only on phones, short label from md, full label from xl. */
+function BarButton({
+  icon: Icon,
+  label,
+  longLabel,
+  onClick,
+  disabled,
+  strong,
+  tip,
+}: {
+  icon: LucideIcon;
+  label: string;
+  longLabel: string;
+  onClick: () => void;
+  disabled?: boolean;
+  strong?: boolean;
+  tip?: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={tip ?? longLabel}
+      aria-label={longLabel}
+      className={`h-9 inline-flex items-center gap-2 rounded-lg px-2.5 md:px-3 text-sm font-medium transition-[opacity,background-color,color,border-color] disabled:opacity-40 disabled:cursor-not-allowed ${
+        strong
+          ? "bg-(--de-ink) text-(--de-paper) hover:opacity-90 disabled:hover:opacity-40"
+          : "border border-(--de-line) bg-(--de-surface) hover:border-(--de-ink) disabled:hover:border-(--de-line)"
+      }`}
+    >
+      <Icon size={16} strokeWidth={2} />
+      <span className="hidden md:inline xl:hidden">{label}</span>
+      <span className="hidden xl:inline">{longLabel}</span>
+    </button>
+  );
+}
+
+function ThemePicker({ current, onPick }: { current: ExerciseTheme; onPick: (id: string) => void }) {
+  return (
+    <Popover.Root>
+      <Popover.Trigger asChild>
+        <button
+          aria-label="Change colours"
+          title="Change colours"
+          className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-(--de-line) bg-(--de-surface) hover:border-(--de-ink) transition-colors"
+        >
+          <Palette size={16} />
+        </button>
+      </Popover.Trigger>
+      <Popover.Content
+        align="end"
+        sideOffset={8}
+        className="z-50 w-72 rounded-xl border border-(--de-line) bg-(--de-surface) p-2 shadow-xl outline-none"
+      >
+        <div className="px-2 pt-1 pb-2 text-xs uppercase tracking-[0.14em] text-(--de-muted)">Colours</div>
+        <ul className="flex flex-col gap-1" role="radiogroup" aria-label="Colour theme">
+          {THEMES.map((t) => {
+            const on = t.id === current.id;
+            return (
+              <li key={t.id}>
                 <button
-                  key={tab.id}
-                  role="tab"
-                  aria-selected={activeTab === tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`px-3 py-1.5 rounded-md text-sm whitespace-nowrap transition-colors max-w-[14rem] truncate ${
-                    activeTab === tab.id ? "bg-[#16140F] text-white" : "text-[#6B665C] hover:text-[#16140F]"
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => onPick(t.id)}
+                  className={`w-full flex items-center gap-3 rounded-lg p-2 text-left transition-colors ${
+                    on ? "bg-(--de-paper)" : "hover:bg-(--de-paper)"
                   }`}
                 >
-                  {tab.label}
+                  {/* A tiny preview of the theme itself: its paper, text, accent and option colours. */}
+                  <span
+                    className="shrink-0 w-14 h-10 rounded-md border flex flex-col justify-between p-1.5"
+                    style={{ background: t.paper, borderColor: t.line }}
+                    aria-hidden
+                  >
+                    <span className="h-1 w-7 rounded-full" style={{ background: t.ink }} />
+                    <span className="flex gap-0.5">
+                      {[t.accent, ...t.categories.slice(1, 4)].map((c, i) => (
+                        <span key={i} className="w-2 h-2 rounded-full" style={{ background: c }} />
+                      ))}
+                    </span>
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium">{t.name}</span>
+                    <span className="block text-xs text-(--de-muted) truncate">{t.note}</span>
+                  </span>
+                  {on && <Check size={16} className="shrink-0" />}
                 </button>
-              ))}
-            </div>
-
-            <div className="ml-auto flex items-center gap-3">
-              {activeTab === "time" && (
-                <div className="inline-flex rounded-md border border-[#DDD8CC] bg-white p-0.5 text-xs">
-                  {(["cumulative", "per-minute"] as ChartMode[]).map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => setChartMode(m)}
-                      className={`px-2.5 py-1 rounded-[5px] transition-colors ${
-                        chartMode === m ? "bg-[#F5F3EE] text-[#16140F] font-medium" : "text-[#6B665C]"
-                      }`}
-                    >
-                      {m === "cumulative" ? "Total" : "Per minute"}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {status === "live" && chartsAllowed && (
-                <button
-                  onClick={() => setChartHidden((h) => !h)}
-                  className="text-xs font-medium text-[#6B665C] hover:text-[#16140F] underline underline-offset-4"
-                >
-                  {chartHidden ? "Show chart" : "Hide chart"}
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div ref={panelRef} className="flex-1 min-h-0 rounded-xl border border-[#DDD8CC] bg-white p-3 sm:p-5">
-            {!chartsAllowed ? (
-              <div className="h-full flex flex-col items-center justify-center text-center gap-2 px-6">
-                <div className="text-lg font-semibold">Results unlock when the exercise ends</div>
-                <p className="text-sm text-[#6B665C] max-w-sm">
-                  This template keeps the chart hidden while people are still answering.
-                </p>
-              </div>
-            ) : chartHidden ? (
-              <div className="h-full flex flex-col items-center justify-center gap-5 text-center">
-                <div className="text-sm uppercase tracking-[0.14em] text-[#6B665C]">Chart hidden</div>
-                <button
-                  onClick={() => setChartHidden(false)}
-                  className="px-6 py-3 rounded-lg bg-[#16140F] text-white font-semibold hover:bg-black transition-colors"
-                >
-                  Reveal the chart
-                </button>
-              </div>
-            ) : activeField ? (
-              <FieldChart field={activeField} chartType={chartConfig[activeField.id]!} entries={entries} />
-            ) : (
-              <EntryChart entries={timestamps} mode={chartMode} />
-            )}
-          </div>
-        </section>
-      </main>
-
-      {/* Bottom bar */}
-      <footer className="shrink-0 min-h-14 px-4 sm:px-6 py-2 flex items-center gap-2 sm:gap-3 flex-wrap border-t border-[#DDD8CC]">
-        {status === "live" ? (
-          <button
-            onClick={handleFinish}
-            className="px-4 py-2 rounded-lg border border-[#16140F] text-sm font-medium hover:bg-[#16140F] hover:text-white transition-colors"
-          >
-            Finish exercise
-          </button>
-        ) : (
-          <>
-            <button
-              onClick={() => exportEntriesToExcel(entries, fields, `${title || "exercise"}.xlsx`)}
-              className="px-4 py-2 rounded-lg bg-[#16140F] text-white text-sm font-medium hover:bg-black transition-colors"
-            >
-              Download Excel
-            </button>
-            <button
-              onClick={() => {
-                const svg = panelRef.current?.querySelector<SVGSVGElement>("svg.recharts-surface");
-                if (svg) exportSvgAsPng(svg, `${title || "exercise"}-chart.png`);
-              }}
-              className="px-4 py-2 rounded-lg border border-[#16140F] text-sm font-medium hover:bg-[#16140F] hover:text-white transition-colors"
-            >
-              Download chart
-            </button>
-          </>
-        )}
-
-        <div className="ml-auto flex items-center gap-3">
-          {isLocal ? (
-            <>
-              <span className="hidden md:inline text-xs text-[#6B665C]">Only saved on this device</span>
-              <button
-                onClick={handleSaveToCloud}
-                disabled={saving}
-                className="px-4 py-2 rounded-lg bg-white border border-[#DDD8CC] text-sm font-medium hover:border-[#16140F] transition-colors disabled:opacity-50"
-              >
-                {saving ? "Saving…" : "Save to cloud"}
-              </button>
-            </>
-          ) : (
-            <span className="text-xs text-[#6B665C]">Saved to your account</span>
-          )}
-        </div>
-      </footer>
-    </div>
+              </li>
+            );
+          })}
+        </ul>
+      </Popover.Content>
+    </Popover.Root>
   );
 }
 
 export default function RunnerPage() {
   return (
-    <Suspense fallback={<div className="h-dvh bg-[#F5F3EE]" />}>
+    <Suspense fallback={<div className="h-dvh" style={{ background: DEFAULT_THEME.paper }} />}>
       <RunnerPageInner />
     </Suspense>
   );

@@ -26,8 +26,8 @@ export interface ExerciseField {
   options?: string[];
 }
 
-export type ChartType = "line" | "bar" | "pie" | "number" | "none";
-export type ChartConfig = Record<string, ChartType>;
+/** fieldId → default chart id (see exerciseCharts.ts), or "none" to leave it uncharted. */
+export type ChartConfig = Record<string, string>;
 
 const ANSWER_BLOCK_TYPES = new Set<ExerciseFieldType>([
   "shortAnswerBlock",
