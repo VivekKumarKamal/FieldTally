@@ -22,6 +22,9 @@ const OPTION_CHILD: Record<string, string> = {
 
 const OPTION_TYPES = new Set(Object.values(OPTION_CHILD));
 
+/** Block types that can carry an answer key, and so a point value. */
+const GRADABLE = new Set(["multipleChoiceBlock", "checkboxBlock", "numberAnswerBlock"]);
+
 /** The answer key as a list, whichever shape the block stores it in. */
 function answerList(correctAnswer: unknown): string[] {
   if (Array.isArray(correctAnswer)) return correctAnswer.filter((v): v is string => typeof v === "string");
@@ -54,6 +57,19 @@ function buildDecorations(doc: ProseMirrorNode): DecorationSet {
           })
         );
       }
+    // Points badge on any graded question, whether or not it has options.
+    // Attached to the BLOCK, not the title: a widget inside the title makes
+    // ProseMirror append a trailing <br> (the widget becomes the last inline
+    // child), which pushed the required asterisk onto its own line. An absolutely
+    // positioned pseudo-element on the block stays out of the inline flow.
+    if (GRADABLE.has(node.type.name) && node.attrs.correctAnswer != null) {
+      const points = node.attrs.quizPoints ?? 1;
+      decorations.push(
+        Decoration.node(pos, pos + node.nodeSize, {
+          class: "has-quiz-points",
+          "data-quiz-points": `${points} ${points === 1 ? "point" : "points"}`,
+        })
+      );
     }
 
     if (!childType) return true;

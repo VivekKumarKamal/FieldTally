@@ -986,6 +986,18 @@ body {
   display: inline-flex;
   align-items: center;
   margin-left: 6px;
+/* Per-question mark allocation, from the quizAnswerPicker decorations.
+   Absolutely positioned so it never joins the title's inline flow — that is what
+   pushed the required asterisk onto its own line. */
+.quiz-mode-active .tiptap:not(.form-renderer) .has-quiz-points {
+  position: relative;
+}
+
+.quiz-mode-active .tiptap:not(.form-renderer) .has-quiz-points::before {
+  content: attr(data-quiz-points);
+  position: absolute;
+  top: 0;
+  right: 0;
   padding: 1px 8px;
   border-radius: 999px;
   background-color: #f4f4f5;
@@ -996,6 +1008,7 @@ body {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
+  pointer-events: none;
   user-select: none;
 }
 
