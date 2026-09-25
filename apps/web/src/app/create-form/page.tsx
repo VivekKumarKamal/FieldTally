@@ -23,7 +23,7 @@ import {
   CheckSquare, CircleDot, MapPin, Image, PenTool,
   Heading1, Heading2, Heading3, List, ListOrdered, Cloud, Check, History, CloudUpload, CloudOff, CloudCheck, ChevronLeft,
   FileDown, LayoutGrid, Sparkles, Share2, Globe, Lock, Trophy,
-  Eye, Upload, MoreHorizontal, HelpCircle, ListChecks, Award
+  Eye, Upload, MoreHorizontal, HelpCircle, ListChecks, Award, BarChart3
 } from "lucide-react";
 import * as Popover from "@radix-ui/react-popover";
 import * as Switch from "@radix-ui/react-switch";
@@ -48,6 +48,7 @@ import {
   updateFormMemberRole
 } from "../../lib/formActions";
 import { TEMPLATES, getClonedTemplateSchema } from "../../lib/templates";
+import { extractExerciseFields, type ChartType } from "../../lib/exerciseSchema";
 import FormRenderer from "../../components/FormRenderer";
 
 import { defaultExtensions } from "./extension";
@@ -205,6 +206,8 @@ function FormEditorContent() {
     editor.view.dispatch(editor.state.tr.setDocAttribute(key, value));
     if (key === "quizMode") setQuizMode(value);
     if (key === "showResultsImmediately") setShowResultsImmediately(value);
+    if (key === "chartConfig") setChartConfig(value);
+    if (key === "liveDuringExercise") setLiveDuringExercise(value);
     saveForm(editor.getJSON());
   };
 
@@ -226,6 +229,9 @@ function FormEditorContent() {
   const [userProfile, setUserProfile] = useState<{ email?: string, avatar_url?: string } | null>(null);
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [accessOpen, setAccessOpen] = useState<boolean>(true);
+  const [formKind, setFormKind] = useState<string | null>(null);
+  const [chartConfig, setChartConfig] = useState<Record<string, string>>({});
+  const [liveDuringExercise, setLiveDuringExercise] = useState(true);
   const [formMembers, setFormMembers] = useState<{ user_id: string; email: string; name?: string; role: "owner" | "editor" | "viewer" | "submitter" }[]>([]);
   const [shareEmailInput, setShareEmailInput] = useState("");
   const [addMemberRoles, setAddMemberRoles] = useState({
@@ -303,6 +309,9 @@ function FormEditorContent() {
       setFormVersion(result.version || null);
       setLatestPublishedSchema(result.latestPublishedSchema || null);
       setLatestPublishedTitle(result.latestPublishedTitle || null);
+      setFormKind(result.kind || "form");
+      setChartConfig(result.schema?.attrs?.chartConfig || {});
+      setLiveDuringExercise(result.schema?.attrs?.liveDuringExercise !== false);
       if (result.shouldRemount) setEditorKey(k => k + 1);
       setIsLoaded(true);
 
@@ -917,6 +926,74 @@ function FormEditorContent() {
                 </div>
               </Popover.Content>
             </Popover.Root>
+
+            {formKind === "exercise_template" && (
+              <Popover.Root>
+                <Tooltip content="Exercise settings">
+                  <Popover.Trigger asChild>
+                    <button
+                      aria-label="Exercise settings"
+                      className="icon-btn inline-flex border bg-fuchsia-50 border-fuchsia-200 text-fuchsia-700 shadow-sm"
+                    >
+                      <BarChart3 size={16} />
+                    </button>
+                  </Popover.Trigger>
+                </Tooltip>
+                <Popover.Content align="center" sideOffset={8} className="w-80 p-4 rounded-xl border border-zinc-200 bg-white shadow-xl z-[150] outline-none max-h-[70vh] overflow-y-auto">
+                  <div className="flex flex-col gap-4">
+                    <div>
+                      <h3 className="text-sm font-semibold text-zinc-950">Exercise Settings</h3>
+                      <p className="text-xs text-zinc-500 mt-0.5">Chart behavior for people running this exercise.</p>
+                    </div>
+
+                    <div className="h-px bg-zinc-100" />
+
+                    <div className="flex items-center justify-between">
+                      <div className="flex flex-col pr-4">
+                        <span className="text-xs font-semibold text-zinc-800">Live Chart</span>
+                        <span className="text-[10px] text-zinc-400">Show the chart while the exercise runs, not just after finishing.</span>
+                      </div>
+                      <Switch.Root
+                        checked={liveDuringExercise}
+                        onCheckedChange={(checked) => updateDocAttr("liveDuringExercise", checked)}
+                        className="w-10 h-6 bg-zinc-200 rounded-full relative data-[state=checked]:bg-fuchsia-500 outline-none cursor-pointer shadow-inner transition-colors"
+                      >
+                        <Switch.Thumb className="block w-4 h-4 bg-white rounded-full transition-transform duration-100 translate-x-1 will-change-transform data-[state=checked]:translate-x-5 shadow-sm" />
+                      </Switch.Root>
+                    </div>
+
+                    {(() => {
+                      const fields = editorRef.current ? extractExerciseFields(editorRef.current.getJSON()) : [];
+                      if (fields.length === 0) {
+                        return <p className="text-[11px] text-zinc-400 pt-1 border-t border-zinc-100">Add questions to the form to assign them a chart type.</p>;
+                      }
+                      return (
+                        <div className="flex flex-col gap-3 pt-1 border-t border-zinc-100">
+                          {fields.map((field) => (
+                            <div key={field.id} className="flex items-center justify-between gap-3">
+                              <span className="text-xs text-zinc-700 truncate">{field.label}</span>
+                              <select
+                                value={chartConfig[field.id] || "none"}
+                                onChange={(e) =>
+                                  updateDocAttr("chartConfig", { ...chartConfig, [field.id]: e.target.value as ChartType })
+                                }
+                                className="text-xs border border-zinc-200 rounded-md px-2 py-1 bg-white"
+                              >
+                                <option value="none">No chart</option>
+                                <option value="bar">Bar</option>
+                                <option value="pie">Pie</option>
+                                <option value="line">Line</option>
+                                <option value="number">Number</option>
+                              </select>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </Popover.Content>
+              </Popover.Root>
+            )}
 
             <Tooltip content="Preview form">
               <button

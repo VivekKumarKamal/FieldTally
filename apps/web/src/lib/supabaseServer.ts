@@ -66,7 +66,7 @@ export async function resolveFormAccess(
 ): Promise<ResolvedForm> {
   const { data: form, error } = await supabase
     .from("forms")
-    .select("id, status, access_open, created_by")
+    .select("id, status, access_open, created_by, kind")
     .eq("id", formId)
     .maybeSingle();
 

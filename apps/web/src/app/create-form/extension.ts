@@ -134,6 +134,15 @@ export const CustomDocument = Node.create({
         },
         parseHTML: element => element.getAttribute("data-show-results-immediately") !== "false",
       },
+      // Data Exercises: per-field chart type (fieldId -> "line"|"bar"|"pie"|"number"|"none")
+      // and whether the chart is shown live or only after the exercise finishes.
+      // See apps/web/src/lib/exerciseSchema.ts, which reads these back out.
+      chartConfig: {
+        default: {},
+      },
+      liveDuringExercise: {
+        default: true,
+      },
     };
   },
 });
