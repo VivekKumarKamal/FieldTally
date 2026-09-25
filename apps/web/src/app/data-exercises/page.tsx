@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { apiGet, apiSend } from "@/lib/apiClient";
+import { extractExerciseFields, getExerciseSettings } from "@/lib/exerciseSchema";
 
 interface FormRow {
   id: string;
@@ -19,6 +20,21 @@ function titleOf(row: FormRow) {
   return row.draft_schema?.title || "Untitled";
 }
 
+function descriptionOf(row: FormRow): string {
+  const para = (row.draft_schema?.content?.content ?? []).find((n: any) => n.type === "paragraph");
+  return (para?.content ?? []).map((n: any) => n.text || "").join("").trim();
+}
+
+function relativeTime(iso: string | null) {
+  if (!iso) return "—";
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 86400 * 7) return `${Math.floor(diff / 86400)}d ago`;
+  return new Date(iso).toLocaleDateString([], { day: "numeric", month: "short" });
+}
+
 function startLocalRun(templateId: string, title: string, content: any): string {
   const runId = `local-${crypto.randomUUID()}`;
   localStorage.setItem(
@@ -26,6 +42,69 @@ function startLocalRun(templateId: string, title: string, content: any): string 
     JSON.stringify({ templateId, title, content, entries: [], status: "live", startedAt: Date.now() }),
   );
   return runId;
+}
+
+function TemplateCard({
+  row,
+  index,
+  starting,
+  onRun,
+}: {
+  row: FormRow;
+  index: number;
+  starting: boolean;
+  onRun: () => void;
+}) {
+  const content = row.draft_schema?.content;
+  const fieldCount = extractExerciseFields(content).length;
+  const { liveDuringExercise } = getExerciseSettings(content);
+  const description = descriptionOf(row);
+
+  return (
+    <article className="group flex flex-col rounded-xl border border-[#DDD8CC] bg-white p-5 transition-colors hover:border-[#16140F]">
+      <div className="flex items-center justify-between text-xs">
+        <span className="font-mono text-[#6B665C]">{String(index + 1).padStart(2, "0")}</span>
+        <span className="uppercase tracking-[0.14em] text-[#6B665C]">{row.created_by ? "Community" : "Built-in"}</span>
+      </div>
+
+      <h3 className="mt-6 text-lg font-semibold leading-snug">{titleOf(row)}</h3>
+      <p className="mt-1.5 text-sm text-[#6B665C] line-clamp-2 min-h-[2.5rem]">
+        {description || "No description."}
+      </p>
+
+      <dl className="mt-5 flex gap-5 text-xs">
+        <div>
+          <dt className="text-[#6B665C]">Input</dt>
+          <dd className="mt-0.5 font-medium">{fieldCount === 0 ? "One tap" : `${fieldCount} question${fieldCount === 1 ? "" : "s"}`}</dd>
+        </div>
+        <div>
+          <dt className="text-[#6B665C]">Chart</dt>
+          <dd className="mt-0.5 font-medium">{liveDuringExercise ? "Live" : "After finish"}</dd>
+        </div>
+      </dl>
+
+      <button
+        onClick={onRun}
+        disabled={starting}
+        className="mt-6 w-full flex items-center justify-between rounded-lg border border-[#16140F] px-4 py-2.5 text-sm font-medium transition-colors group-hover:bg-[#16140F] group-hover:text-white disabled:opacity-50"
+      >
+        <span>{starting ? "Starting…" : "Run exercise"}</span>
+        <span aria-hidden>→</span>
+      </button>
+    </article>
+  );
+}
+
+function SectionHeading({ title, count, children }: { title: string; count?: number; children?: React.ReactNode }) {
+  return (
+    <div className="flex items-end justify-between gap-4 border-b border-[#16140F] pb-2 mb-5">
+      <h2 className="text-sm font-semibold uppercase tracking-[0.14em]">
+        {title}
+        {count !== undefined && <span className="ml-2 font-mono font-normal text-[#6B665C]">{count}</span>}
+      </h2>
+      {children}
+    </div>
+  );
 }
 
 export default function DataExercisesDashboard() {
@@ -36,6 +115,7 @@ export default function DataExercisesDashboard() {
   const [myExercises, setMyExercises] = useState<FormRow[]>([]);
   const [myTemplates, setMyTemplates] = useState<FormRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [creating, setCreating] = useState(false);
   const [startingId, setStartingId] = useState<string | null>(null);
 
@@ -51,6 +131,7 @@ export default function DataExercisesDashboard() {
     (async () => {
       const templatesResult = await apiGet<{ forms: FormRow[] }>("/api/forms?scope=public_templates&limit=50");
       if (templatesResult.ok) setTemplates(templatesResult.data?.forms ?? []);
+      else setLoadError(true);
 
       if (userId) {
         const [exercisesResult, myTemplatesResult] = await Promise.all([
@@ -103,103 +184,140 @@ export default function DataExercisesDashboard() {
     }
   }
 
+  const signInHref = `/login?redirect=${encodeURIComponent("/data-exercises")}`;
+
   return (
-    <div className="min-h-screen bg-zinc-50">
-      <div className="max-w-5xl mx-auto px-6 py-10">
-        <div className="flex items-center justify-between flex-wrap gap-4 mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-zinc-900">Data Exercises</h1>
-            <p className="text-zinc-500 mt-1">Run a live classroom exercise, or build your own.</p>
+    <div className="min-h-dvh bg-[#F5F3EE] text-[#16140F]" style={{ fontFamily: "var(--font-geist-sans)" }}>
+      <nav className="border-b border-[#DDD8CC]">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2">
+            <span className="w-6 h-6 rounded-md bg-[#16140F] text-white text-[10px] font-bold flex items-center justify-center">FT</span>
+            <span className="font-semibold text-sm">FieldTally</span>
+          </Link>
+          {checkedAuth &&
+            (userId ? (
+              <Link href="/dashboard" className="text-sm text-[#6B665C] hover:text-[#16140F] transition-colors">
+                Forms dashboard
+              </Link>
+            ) : (
+              <Link href={signInHref} className="text-sm font-medium hover:underline underline-offset-4">
+                Sign in
+              </Link>
+            ))}
+        </div>
+      </nav>
+
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
+        <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 mb-14">
+          <div className="max-w-2xl">
+            <div className="text-xs uppercase tracking-[0.14em] text-[#FF5B1F] font-semibold mb-3">Data Exercises</div>
+            <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.05]">
+              Collect it live.
+              <br />
+              <span className="text-[#6B665C]">Chart it in front of the room.</span>
+            </h1>
+            <p className="mt-4 text-[#6B665C]">
+              Pick an exercise, log answers as they happen, and reveal the chart when the class is ready.
+              {!userId && checkedAuth && (
+                <>
+                  {" "}No account needed.{" "}
+                  <Link href={signInHref} className="text-[#16140F] underline underline-offset-4">
+                    Sign in
+                  </Link>{" "}
+                  to save results or build your own.
+                </>
+              )}
+            </p>
           </div>
           <button
             onClick={handleCreateTemplate}
             disabled={creating}
-            className="px-5 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold rounded-lg transition-colors disabled:opacity-50"
+            className="shrink-0 self-start sm:self-auto px-5 py-3 rounded-lg bg-[#16140F] text-white text-sm font-medium hover:bg-black transition-colors disabled:opacity-50"
           >
-            {creating ? "Creating..." : "+ Create New Template"}
+            {creating ? "Creating…" : "+ New template"}
           </button>
-        </div>
+        </header>
 
-        {!userId && checkedAuth && (
-          <div className="mb-8 p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm">
-            You can run any exercise below without signing in.{" "}
-            <Link href={`/login?redirect=${encodeURIComponent("/data-exercises")}`} className="font-semibold underline">
-              Sign in
-            </Link>{" "}
-            to create your own templates or save collected data to the cloud.
-          </div>
-        )}
-
-        {userId && myExercises.length > 0 && (
-          <section className="mb-10">
-            <h2 className="text-lg font-semibold text-zinc-800 mb-3">Your Exercises</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {myExercises.map((ex) => (
-                <Link
-                  key={ex.id}
-                  href={`/data-exercises/run/${ex.id}`}
-                  className="p-4 bg-white border border-zinc-200 rounded-xl hover:shadow-md transition-shadow"
-                >
-                  <div className="font-semibold text-zinc-800">{titleOf(ex)}</div>
-                  <span
-                    className={`inline-block mt-2 text-xs font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
-                      ex.access_open ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100 text-zinc-500"
-                    }`}
-                  >
-                    {ex.access_open ? "Live" : "Finished"}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {userId && myTemplates.length > 0 && (
-          <section className="mb-10">
-            <h2 className="text-lg font-semibold text-zinc-800 mb-3">Templates You Made</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {myTemplates.map((t) => (
-                <div key={t.id} className="p-4 bg-white border border-zinc-200 rounded-xl">
-                  <div className="font-semibold text-zinc-800">{titleOf(t)}</div>
-                  <div className="flex gap-3 mt-3 text-sm font-semibold">
-                    <button onClick={() => handleUseTemplate(t)} className="text-indigo-600 hover:text-indigo-800">
-                      Use
-                    </button>
-                    <Link href={`/create-form?form=${t.id}`} className="text-zinc-500 hover:text-zinc-700">
-                      Edit
-                    </Link>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        <section>
-          <h2 className="text-lg font-semibold text-zinc-800 mb-3">Templates</h2>
+        <section className="mb-16">
+          <SectionHeading title="Templates" count={loading ? undefined : templates.length} />
           {loading ? (
-            <div className="text-zinc-400">Loading templates...</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-64 rounded-xl border border-[#DDD8CC] bg-white/60 animate-pulse" />
+              ))}
+            </div>
+          ) : loadError ? (
+            <p className="text-sm text-[#6B665C]">Templates couldn&apos;t be loaded. Refresh to try again.</p>
           ) : templates.length === 0 ? (
-            <div className="text-zinc-400">No templates yet — create the first one!</div>
+            <div className="rounded-xl border border-dashed border-[#DDD8CC] p-10 text-center">
+              <p className="font-medium">No templates yet</p>
+              <p className="text-sm text-[#6B665C] mt-1">Create the first one and it&apos;ll show up here for everyone.</p>
+            </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {templates.map((t) => (
-                <div key={t.id} className="p-5 bg-white border border-zinc-200 rounded-xl flex flex-col">
-                  <div className="font-semibold text-zinc-800 mb-1">{titleOf(t)}</div>
-                  <div className="text-xs text-zinc-400 mb-4">{t.created_by ? "Community template" : "Built-in"}</div>
-                  <button
-                    onClick={() => handleUseTemplate(t)}
-                    disabled={startingId === t.id}
-                    className="mt-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50"
-                  >
-                    {startingId === t.id ? "Starting..." : "Use Template"}
-                  </button>
-                </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {templates.map((t, i) => (
+                <TemplateCard key={t.id} row={t} index={i} starting={startingId === t.id} onRun={() => handleUseTemplate(t)} />
               ))}
             </div>
           )}
         </section>
-      </div>
+
+        {userId && (
+          <section className="mb-16">
+            <SectionHeading title="Your runs" count={myExercises.length} />
+            {myExercises.length === 0 ? (
+              <p className="text-sm text-[#6B665C]">Runs you save to the cloud appear here.</p>
+            ) : (
+              <ul className="divide-y divide-[#DDD8CC] border-b border-[#DDD8CC]">
+                {myExercises.map((ex) => (
+                  <li key={ex.id}>
+                    <Link
+                      href={`/data-exercises/run/${ex.id}`}
+                      className="grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_8rem_7rem_2rem] items-center gap-4 py-3.5 px-1 hover:bg-white/60 transition-colors"
+                    >
+                      <span className="font-medium truncate">{titleOf(ex)}</span>
+                      <span className="inline-flex items-center gap-2 text-sm">
+                        <span className={`w-1.5 h-1.5 rounded-full ${ex.access_open ? "bg-[#1F9D55]" : "bg-[#6B665C]"}`} />
+                        {ex.access_open ? "Live" : "Finished"}
+                      </span>
+                      <span className="hidden sm:block text-sm text-[#6B665C] font-mono">{relativeTime(ex.updated_at)}</span>
+                      <span className="hidden sm:block text-right text-[#6B665C]" aria-hidden>→</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+
+        {userId && myTemplates.length > 0 && (
+          <section>
+            <SectionHeading title="Your templates" count={myTemplates.length} />
+            <ul className="divide-y divide-[#DDD8CC] border-b border-[#DDD8CC]">
+              {myTemplates.map((t) => {
+                const published = t.status === "published";
+                return (
+                  <li key={t.id} className="grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_8rem_7rem_auto] items-center gap-4 py-3.5 px-1">
+                    <span className="font-medium truncate">{titleOf(t)}</span>
+                    <span className="text-sm text-[#6B665C]">{published ? "Published" : "Draft"}</span>
+                    <span className="hidden sm:block text-sm text-[#6B665C] font-mono">{relativeTime(t.updated_at)}</span>
+                    <span className="col-span-2 sm:col-span-1 flex gap-4 text-sm font-medium">
+                      {published && (
+                        <button onClick={() => handleUseTemplate(t)} className="hover:underline underline-offset-4">
+                          Run
+                        </button>
+                      )}
+                      <Link href={`/create-form?form=${t.id}`} className="text-[#6B665C] hover:text-[#16140F] hover:underline underline-offset-4">
+                        Edit
+                      </Link>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
+      </main>
     </div>
   );
 }

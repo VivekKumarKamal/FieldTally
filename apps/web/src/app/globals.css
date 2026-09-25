@@ -11,30 +11,23 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Data Exercises runner: "+1" float above the log button, and a small tick on the count. */
 @keyframes class-entry-pop-in {
-  0% { transform: scale(0.5) translateY(0); opacity: 0; }
-  40% { transform: scale(1.2) translateY(-10px); opacity: 1; }
-  100% { transform: scale(1) translateY(-60px); opacity: 0; }
-}
-.animate-class-entry-pop {
-  animation: class-entry-pop-in 0.9s ease-out forwards;
+  0% { transform: scale(0.6) translateY(0); opacity: 0; }
+  30% { transform: scale(1.1) translateY(-14px); opacity: 1; }
+  100% { transform: scale(1) translateY(-56px); opacity: 0; }
 }
 
-@keyframes class-entry-count-bounce {
-  0% { transform: scale(1); }
-  30% { transform: scale(1.25); }
-  100% { transform: scale(1); }
-}
-.animate-class-entry-count-bounce {
-  animation: class-entry-count-bounce 0.4s ease-out;
+@keyframes de-count-tick {
+  0% { transform: translateY(0.08em); opacity: 0.35; }
+  100% { transform: none; opacity: 1; }
 }
 
-@keyframes class-entry-button-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(236, 72, 153, 0.5); }
-  50% { box-shadow: 0 0 0 18px rgba(236, 72, 153, 0); }
-}
-.animate-class-entry-button-pulse {
-  animation: class-entry-button-pulse 2s infinite;
+@media (prefers-reduced-motion: reduce) {
+  [style*="class-entry-pop-in"],
+  [style*="de-count-tick"] {
+    animation: none !important;
+  }
 }
 
 .is-empty:not(:has(.is-empty))::before {

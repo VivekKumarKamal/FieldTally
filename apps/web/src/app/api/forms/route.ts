@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
     if (scope === "owned") {
       let query = supabase
         .from("forms")
-        .select("id, status, updated_at, draft_schema, kind", { count: "exact" })
+        .select("id, status, updated_at, draft_schema, kind, access_open", { count: "exact" })
         .eq("created_by", userId);
 
       if (isFormKind(kindFilter)) {

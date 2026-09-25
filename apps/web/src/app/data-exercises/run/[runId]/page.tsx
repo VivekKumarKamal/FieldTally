@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, Suspense } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo, Suspense } from "react";
+import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { apiGet, apiSend } from "@/lib/apiClient";
 import { claimLocalRun, finishExerciseInstance } from "@/lib/exerciseInstances";
 import { extractExerciseFields, getExerciseSettings, type ExerciseField, type ChartConfig } from "@/lib/exerciseSchema";
-import LiveClock from "../../_shared/LiveClock";
-import EntryChart, { type ChartMode, type EntryChartHandle } from "../../_shared/EntryChart";
+import EntryChart, { type ChartMode } from "../../_shared/EntryChart";
 import FieldChart from "../../_shared/FieldChart";
 import ExerciseEntryForm from "../../_shared/ExerciseEntryForm";
 import { exportEntriesToExcel, exportSvgAsPng } from "../../_shared/export";
@@ -26,11 +26,41 @@ interface LocalBundle {
   startedAt: number;
 }
 
-const EMOJIS = ["🎉", "⭐", "✨", "🙌", "🔥"];
 const POLL_MS = 4000;
 
 function localKey(runId: string) {
   return `ft_exercise_run_${runId}`;
+}
+
+const fmtTime = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+function Clock() {
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => {
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  if (!now) return null;
+  return (
+    <div className="flex items-baseline gap-3">
+      <span className="hidden sm:inline text-xs uppercase tracking-[0.14em] text-[#6B665C]">
+        {now.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })}
+      </span>
+      <span className="font-mono text-lg sm:text-xl font-medium tabular-nums">
+        {now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+      </span>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[11px] uppercase tracking-[0.14em] text-[#6B665C]">{label}</div>
+      <div className="font-mono text-base sm:text-lg tabular-nums truncate">{value}</div>
+    </div>
+  );
 }
 
 function RunnerPageInner() {
@@ -52,9 +82,10 @@ function RunnerPageInner() {
   const [error, setError] = useState<string | null>(null);
   const [chartHidden, setChartHidden] = useState(false);
   const [chartMode, setChartMode] = useState<ChartMode>("cumulative");
-  const [pops, setPops] = useState<{ id: string; emoji: string; offset: number }[]>([]);
+  const [activeTab, setActiveTab] = useState<string>("time");
+  const [pops, setPops] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
-  const chartRef = useRef<EntryChartHandle>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const loadFromContent = useCallback((docContent: any) => {
     setContent(docContent);
@@ -100,9 +131,9 @@ function RunnerPageInner() {
     })();
   }, [runId, isLocal, loadFromContent]);
 
-  // Poll entries in cloud mode while live.
+  // Poll entries in cloud mode. Once more after finishing, so the final chart is complete.
   useEffect(() => {
-    if (isLocal || status !== "live" || loading) return;
+    if (isLocal || loading) return;
     let cancelled = false;
 
     async function poll() {
@@ -115,6 +146,7 @@ function RunnerPageInner() {
     }
 
     poll();
+    if (status !== "live") return () => { cancelled = true; };
     const id = setInterval(poll, POLL_MS);
     return () => {
       cancelled = true;
@@ -157,14 +189,31 @@ function RunnerPageInner() {
     }
 
     const id = crypto.randomUUID();
-    const emoji = EMOJIS[Math.floor(Math.random() * EMOJIS.length)]!;
-    const offset = Math.random() * 80 - 40;
-    setPops((p) => [...p, { id, emoji, offset }]);
-    setTimeout(() => setPops((p) => p.filter((x) => x.id !== id)), 900);
+    setPops((p) => [...p, id]);
+    setTimeout(() => setPops((p) => p.filter((x) => x !== id)), 900);
   }
 
+  // Space logs an entry on one-tap exercises, so a facilitator at a laptop never has to aim.
+  const oneTap = status === "live" && fields.length === 0 && !loading && !error;
+  const logRef = useRef(handleLogEntry);
+  logRef.current = handleLogEntry;
+  useEffect(() => {
+    if (!oneTap) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.code !== "Space" || e.repeat) return;
+      // A focused button already turns Space into a click; don't double-log.
+      if (e.target instanceof Element && e.target.closest("input, textarea, select, button")) return;
+      e.preventDefault();
+      logRef.current({});
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [oneTap]);
+
   async function handleFinish() {
+    if (!confirm("Finish the exercise? No more entries can be logged after this.")) return;
     setStatus("finished");
+    setChartHidden(false);
     if (isLocal) {
       persistLocalBundle({ status: "finished" });
     } else {
@@ -194,153 +243,256 @@ function RunnerPageInner() {
     router.replace(`/data-exercises/run/${result.id}`);
   }
 
+  const timestamps = useMemo(() => entries.map((e) => e.loggedAt).sort((a, b) => a - b), [entries]);
+
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center text-indigo-300 font-semibold">Loading exercise...</div>;
+    return (
+      <div className="h-dvh flex items-center justify-center bg-[#F5F3EE] text-sm text-[#6B665C]">Loading exercise…</div>
+    );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-center px-4">
-        <p className="text-zinc-600">{error}</p>
-        <button onClick={() => router.push("/data-exercises")} className="text-indigo-600 font-semibold underline">
+      <div className="h-dvh flex flex-col items-center justify-center gap-4 text-center px-4 bg-[#F5F3EE] text-[#16140F]">
+        <p>{error}</p>
+        <Link href="/data-exercises" className="text-sm font-medium underline underline-offset-4">
           Back to Data Exercises
-        </button>
+        </Link>
       </div>
     );
   }
 
-  const fieldChartFields = fields.filter((f) => chartConfig[f.id] && chartConfig[f.id] !== "none");
-  const showTimeChart = liveDuringExercise || status === "finished";
+  const count = entries.length;
+  const first = timestamps[0];
+  const last = timestamps[timestamps.length - 1];
+  const spanMin = first && last ? Math.max(1, (last - first) / 60_000) : 0;
+  const perMin = count > 1 ? (count / spanMin).toFixed(1) : "—";
+
+  const fieldTabs = fields.filter((f) => chartConfig[f.id] && chartConfig[f.id] !== "none");
+  const chartsAllowed = liveDuringExercise || status === "finished";
+  const activeField = fieldTabs.find((f) => f.id === activeTab);
 
   return (
     <div
-      className="min-h-screen"
-      style={{ background: "linear-gradient(135deg, #fdf2ff 0%, #eef2ff 50%, #fff7ed 100%)" }}
+      className="h-dvh flex flex-col overflow-hidden bg-[#F5F3EE] text-[#16140F]"
+      style={{ fontFamily: "var(--font-geist-sans)" }}
     >
-      <div className="min-h-screen flex flex-col items-center gap-8 px-4 py-8">
-        <h1 className="text-2xl font-black text-indigo-700 text-center">{title}</h1>
-
-        {status === "live" && <LiveClock />}
-
+      {/* Top bar */}
+      <header className="shrink-0 h-14 px-4 sm:px-6 flex items-center gap-3 sm:gap-4 border-b border-[#DDD8CC]">
+        <Link
+          href="/data-exercises"
+          className="text-sm text-[#6B665C] hover:text-[#16140F] transition-colors whitespace-nowrap"
+        >
+          ← Exercises
+        </Link>
+        <span className="h-5 w-px bg-[#DDD8CC]" aria-hidden />
+        <h1 className="font-semibold truncate">{title}</h1>
         {status === "live" ? (
-          fields.length === 0 ? (
-            <div className="relative flex flex-col items-center gap-3">
-              <button
-                onClick={() => handleLogEntry({})}
-                className="relative rounded-full bg-gradient-to-br from-pink-500 to-fuchsia-600 hover:scale-105 active:scale-95 transition text-white font-extrabold text-3xl px-16 py-10 shadow-2xl"
-              >
-                👋 Log Entry
-                {pops.map((p) => (
+          <span className="shrink-0 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#1F9D55]">
+            <span className="relative flex w-2 h-2">
+              <span className="absolute inset-0 rounded-full bg-[#1F9D55] animate-ping opacity-60" />
+              <span className="relative w-2 h-2 rounded-full bg-[#1F9D55]" />
+            </span>
+            Live
+          </span>
+        ) : (
+          <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6B665C]">Finished</span>
+        )}
+        <div className="ml-auto">
+          <Clock />
+        </div>
+      </header>
+
+      <main className="flex-1 min-h-0 grid grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] lg:grid-rows-1 lg:grid-cols-[minmax(340px,5fr)_minmax(0,7fr)]">
+        {/* Left: count + action */}
+        <section className="min-h-0 flex flex-col gap-5 p-4 sm:p-6 lg:p-10 border-b lg:border-b-0 lg:border-r border-[#DDD8CC] max-h-[48dvh] lg:max-h-none overflow-y-auto">
+          <div>
+            <div className="text-xs uppercase tracking-[0.14em] text-[#6B665C]">Entries logged</div>
+            <div
+              key={count}
+              className={`font-mono font-semibold tabular-nums leading-[0.85] tracking-tight ${
+                oneTap || status === "finished" ? "text-[clamp(4.5rem,22vh,15rem)]" : "text-[clamp(3.5rem,11vh,7rem)]"
+              }`}
+              style={count > 0 ? { animation: "de-count-tick 280ms ease-out" } : undefined}
+            >
+              {count}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4 pt-4 border-t border-[#DDD8CC]">
+            <Stat label="First" value={first ? fmtTime(first) : "—"} />
+            <Stat label="Latest" value={last ? fmtTime(last) : "—"} />
+            <Stat label="Per min" value={perMin} />
+          </div>
+
+          <div className="mt-auto">
+            {status === "live" && fields.length === 0 && (
+              <div className="relative">
+                <button
+                  onClick={() => handleLogEntry({})}
+                  className="w-full rounded-xl bg-[#FF5B1F] text-[#16140F] border-2 border-[#16140F] shadow-[0_8px_0_#16140F] active:translate-y-[8px] active:shadow-none transition-[transform,box-shadow] duration-75 h-[clamp(5.5rem,20vh,11rem)] flex flex-col items-center justify-center gap-1 select-none"
+                >
+                  <span className="text-[clamp(1.75rem,5vh,3rem)] font-bold tracking-tight leading-none">Log entry</span>
+                  <span className="hidden sm:block text-xs font-medium uppercase tracking-[0.14em] opacity-70">
+                    tap or press space
+                  </span>
+                </button>
+                {pops.map((id) => (
                   <span
-                    key={p.id}
-                    className="absolute left-1/2 top-0 text-3xl pointer-events-none"
-                    style={{ transform: `translateX(${p.offset}px)`, animation: "class-entry-pop-in 0.9s ease-out forwards" }}
+                    key={id}
+                    className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 font-mono font-bold text-2xl text-[#FF5B1F]"
+                    style={{ animation: "class-entry-pop-in 0.9s ease-out forwards" }}
+                    aria-hidden
                   >
-                    {p.emoji}
+                    +1
                   </span>
                 ))}
-              </button>
-            </div>
-          ) : (
-            <div className="w-full max-w-md bg-white/70 rounded-3xl shadow-lg p-6">
-              <ExerciseEntryForm fields={fields} onSubmit={handleLogEntry} />
-            </div>
-          )
-        ) : (
-          <div className="text-xl font-bold text-indigo-500">🏁 Exercise Finished</div>
-        )}
-
-        <div className="text-center">
-          <div key={entries.length} className="text-6xl font-black text-fuchsia-700 tabular-nums">
-            {entries.length}
-          </div>
-          <div className="text-lg font-bold text-fuchsia-400 uppercase tracking-wide">Entries</div>
-        </div>
-
-        {showTimeChart && (
-          <div className="w-full max-w-2xl bg-white/70 rounded-3xl shadow-lg p-6 flex flex-col gap-4">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div className="inline-flex rounded-full bg-indigo-100 p-1">
-                {(["cumulative", "per-minute"] as ChartMode[]).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setChartMode(m)}
-                    className={`px-4 py-1.5 rounded-full text-sm font-bold transition ${
-                      chartMode === m ? "bg-indigo-600 text-white shadow" : "text-indigo-500"
-                    }`}
-                  >
-                    {m === "cumulative" ? "Cumulative" : "Per Minute"}
-                  </button>
-                ))}
               </div>
-              {status === "live" && (
-                <button onClick={() => setChartHidden((h) => !h)} className="text-sm font-bold text-indigo-500 hover:text-indigo-700">
-                  {chartHidden ? "👀 Reveal Chart" : "🙈 Hide Chart"}
+            )}
+
+            {status === "live" && fields.length > 0 && (
+              <ExerciseEntryForm fields={fields} onSubmit={handleLogEntry} />
+            )}
+
+            {status === "finished" && (
+              <div className="rounded-xl border border-[#DDD8CC] bg-white p-5">
+                <div className="text-sm font-semibold">Exercise finished</div>
+                <p className="text-sm text-[#6B665C] mt-1">
+                  {count} {count === 1 ? "entry" : "entries"}
+                  {first && last ? ` over ${Math.round(spanMin)} min` : ""}. Export the data or run it again from the
+                  exercises page.
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Right: charts */}
+        <section className="min-h-0 flex flex-col gap-3 p-4 sm:p-6 lg:p-10">
+          <div className="shrink-0 flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1 overflow-x-auto" role="tablist">
+              {[{ id: "time", label: "Over time" }, ...fieldTabs.map((f) => ({ id: f.id, label: f.label }))].map((tab) => (
+                <button
+                  key={tab.id}
+                  role="tab"
+                  aria-selected={activeTab === tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-3 py-1.5 rounded-md text-sm whitespace-nowrap transition-colors max-w-[14rem] truncate ${
+                    activeTab === tab.id ? "bg-[#16140F] text-white" : "text-[#6B665C] hover:text-[#16140F]"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="ml-auto flex items-center gap-3">
+              {activeTab === "time" && (
+                <div className="inline-flex rounded-md border border-[#DDD8CC] bg-white p-0.5 text-xs">
+                  {(["cumulative", "per-minute"] as ChartMode[]).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setChartMode(m)}
+                      className={`px-2.5 py-1 rounded-[5px] transition-colors ${
+                        chartMode === m ? "bg-[#F5F3EE] text-[#16140F] font-medium" : "text-[#6B665C]"
+                      }`}
+                    >
+                      {m === "cumulative" ? "Total" : "Per minute"}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {status === "live" && chartsAllowed && (
+                <button
+                  onClick={() => setChartHidden((h) => !h)}
+                  className="text-xs font-medium text-[#6B665C] hover:text-[#16140F] underline underline-offset-4"
+                >
+                  {chartHidden ? "Show chart" : "Hide chart"}
                 </button>
               )}
             </div>
-            {chartHidden ? (
-              <div className="h-72 flex items-center justify-center text-indigo-300 font-semibold text-lg">Chart hidden</div>
+          </div>
+
+          <div ref={panelRef} className="flex-1 min-h-0 rounded-xl border border-[#DDD8CC] bg-white p-3 sm:p-5">
+            {!chartsAllowed ? (
+              <div className="h-full flex flex-col items-center justify-center text-center gap-2 px-6">
+                <div className="text-lg font-semibold">Results unlock when the exercise ends</div>
+                <p className="text-sm text-[#6B665C] max-w-sm">
+                  This template keeps the chart hidden while people are still answering.
+                </p>
+              </div>
+            ) : chartHidden ? (
+              <div className="h-full flex flex-col items-center justify-center gap-5 text-center">
+                <div className="text-sm uppercase tracking-[0.14em] text-[#6B665C]">Chart hidden</div>
+                <button
+                  onClick={() => setChartHidden(false)}
+                  className="px-6 py-3 rounded-lg bg-[#16140F] text-white font-semibold hover:bg-black transition-colors"
+                >
+                  Reveal the chart
+                </button>
+              </div>
+            ) : activeField ? (
+              <FieldChart field={activeField} chartType={chartConfig[activeField.id]!} entries={entries} />
             ) : (
-              <EntryChart ref={chartRef} entries={entries.map((e) => e.loggedAt)} mode={chartMode} />
+              <EntryChart entries={timestamps} mode={chartMode} />
             )}
           </div>
-        )}
+        </section>
+      </main>
 
-        {fieldChartFields.length > 0 && status === "finished" && (
-          <div className="w-full max-w-2xl grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {fieldChartFields.map((f) => (
-              <FieldChart key={f.id} field={f} chartType={chartConfig[f.id]} entries={entries} />
-            ))}
-          </div>
-        )}
-
-        <div className="flex flex-wrap gap-4 justify-center">
-          {status === "live" && (
+      {/* Bottom bar */}
+      <footer className="shrink-0 min-h-14 px-4 sm:px-6 py-2 flex items-center gap-2 sm:gap-3 flex-wrap border-t border-[#DDD8CC]">
+        {status === "live" ? (
+          <button
+            onClick={handleFinish}
+            className="px-4 py-2 rounded-lg border border-[#16140F] text-sm font-medium hover:bg-[#16140F] hover:text-white transition-colors"
+          >
+            Finish exercise
+          </button>
+        ) : (
+          <>
             <button
-              onClick={handleFinish}
-              className="rounded-full bg-indigo-700 hover:bg-indigo-800 active:scale-95 transition text-white font-bold text-lg px-8 py-3 shadow-lg"
+              onClick={() => exportEntriesToExcel(entries, fields, `${title || "exercise"}.xlsx`)}
+              className="px-4 py-2 rounded-lg bg-[#16140F] text-white text-sm font-medium hover:bg-black transition-colors"
             >
-              Finish Exercise
+              Download Excel
             </button>
-          )}
-          {status === "finished" && (
+            <button
+              onClick={() => {
+                const svg = panelRef.current?.querySelector<SVGSVGElement>("svg.recharts-surface");
+                if (svg) exportSvgAsPng(svg, `${title || "exercise"}-chart.png`);
+              }}
+              className="px-4 py-2 rounded-lg border border-[#16140F] text-sm font-medium hover:bg-[#16140F] hover:text-white transition-colors"
+            >
+              Download chart
+            </button>
+          </>
+        )}
+
+        <div className="ml-auto flex items-center gap-3">
+          {isLocal ? (
             <>
+              <span className="hidden md:inline text-xs text-[#6B665C]">Only saved on this device</span>
               <button
-                onClick={() => exportEntriesToExcel(entries, fields, `${title || "exercise"}.xlsx`)}
-                className="rounded-full bg-emerald-600 hover:bg-emerald-700 active:scale-95 transition text-white font-bold px-6 py-3 shadow-lg"
+                onClick={handleSaveToCloud}
+                disabled={saving}
+                className="px-4 py-2 rounded-lg bg-white border border-[#DDD8CC] text-sm font-medium hover:border-[#16140F] transition-colors disabled:opacity-50"
               >
-                📊 Export to Excel
-              </button>
-              <button
-                onClick={() => {
-                  const svg = chartRef.current?.getSvg();
-                  if (svg) exportSvgAsPng(svg, `${title || "exercise"}-${chartMode}.png`);
-                }}
-                className="rounded-full bg-sky-600 hover:bg-sky-700 active:scale-95 transition text-white font-bold px-6 py-3 shadow-lg"
-              >
-                🖼️ Export Chart
+                {saving ? "Saving…" : "Save to cloud"}
               </button>
             </>
-          )}
-          {isLocal && (
-            <button
-              onClick={handleSaveToCloud}
-              disabled={saving}
-              className="rounded-full bg-zinc-900 hover:bg-zinc-800 active:scale-95 transition text-white font-bold px-6 py-3 shadow-lg disabled:opacity-50"
-            >
-              {saving ? "Saving..." : "☁️ Save to Cloud"}
-            </button>
+          ) : (
+            <span className="text-xs text-[#6B665C]">Saved to your account</span>
           )}
         </div>
-      </div>
+      </footer>
     </div>
   );
 }
 
 export default function RunnerPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-indigo-300 font-semibold">Loading...</div>}>
+    <Suspense fallback={<div className="h-dvh bg-[#F5F3EE]" />}>
       <RunnerPageInner />
     </Suspense>
   );

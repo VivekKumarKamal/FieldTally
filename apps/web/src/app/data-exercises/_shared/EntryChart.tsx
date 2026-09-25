@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useRef, forwardRef, useImperativeHandle } from "react";
+import { useMemo } from "react";
 import {
   ResponsiveContainer,
-  LineChart,
-  Line,
+  AreaChart,
+  Area,
   BarChart,
   Bar,
   XAxis,
@@ -12,9 +12,9 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
+import { INK, ACCENT, LINE, MUTED } from "./theme";
 
 export type ChartMode = "cumulative" | "per-minute";
-export type EntryChartHandle = { getSvg: () => SVGSVGElement | null };
 
 function buildCumulative(entries: number[]) {
   const sorted = [...entries].sort((a, b) => a - b);
@@ -42,50 +42,74 @@ function buildPerMinute(entries: number[]) {
   }));
 }
 
-const EntryChart = forwardRef<EntryChartHandle, { entries: number[]; mode: ChartMode }>(
-  function EntryChart({ entries, mode }, ref) {
-    const wrapperRef = useRef<HTMLDivElement>(null);
+export const AXIS_TICK = { fontSize: 12, fill: MUTED, fontFamily: "var(--font-geist-mono)" };
+export const TOOLTIP_STYLE = {
+  background: INK,
+  border: "none",
+  borderRadius: 6,
+  color: "#fff",
+  fontSize: 12,
+  fontFamily: "var(--font-geist-mono)",
+};
+
+export default function EntryChart({
+  entries,
+  mode,
+  emptyLabel = "Waiting for the first entry",
+}: {
+  entries: number[];
+  mode: ChartMode;
+  emptyLabel?: string;
+}) {
     const data = useMemo(
       () => (mode === "cumulative" ? buildCumulative(entries) : buildPerMinute(entries)),
       [entries, mode],
     );
 
-    useImperativeHandle(ref, () => ({
-      getSvg: () => wrapperRef.current?.querySelector("svg") ?? null,
-    }));
-
     if (entries.length === 0) {
       return (
-        <div className="h-72 flex items-center justify-center text-indigo-300 font-semibold text-lg">
-          Waiting for the first student...
+        <div className="h-full flex flex-col items-center justify-center gap-3 text-[#6B665C]">
+          <div className="flex gap-1.5" aria-hidden>
+            {[0, 1, 2].map((i) => (
+              <span
+                key={i}
+                className="w-2 h-2 rounded-full bg-[#6B665C] animate-pulse"
+                style={{ animationDelay: `${i * 200}ms` }}
+              />
+            ))}
+          </div>
+          <p className="text-sm">{emptyLabel}</p>
         </div>
       );
     }
 
     return (
-      <div ref={wrapperRef} className="h-72 w-full">
+      <div className="h-full w-full">
         <ResponsiveContainer width="100%" height="100%">
           {mode === "cumulative" ? (
-            <LineChart data={data} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="label" tick={{ fontSize: 12 }} interval="preserveStartEnd" />
-              <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-              <Tooltip />
-              <Line type="monotone" dataKey="count" stroke="#ec4899" strokeWidth={4} dot={false} />
-            </LineChart>
+            <AreaChart data={data} margin={{ top: 12, right: 32, left: -12, bottom: 0 }}>
+              <defs>
+                <linearGradient id="entryFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={ACCENT} stopOpacity={0.22} />
+                  <stop offset="100%" stopColor={ACCENT} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke={LINE} vertical={false} />
+              <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: INK }} interval="preserveStartEnd" minTickGap={40} />
+              <YAxis allowDecimals={false} tick={AXIS_TICK} tickLine={false} axisLine={false} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ stroke: INK, strokeDasharray: "3 3" }} />
+              <Area type="stepAfter" dataKey="count" stroke={ACCENT} strokeWidth={3} fill="url(#entryFill)" isAnimationActive={false} />
+            </AreaChart>
           ) : (
-            <BarChart data={data} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="label" tick={{ fontSize: 12 }} interval="preserveStartEnd" />
-              <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-              <Tooltip />
-              <Bar dataKey="count" fill="#6366f1" radius={[6, 6, 0, 0]} />
+            <BarChart data={data} margin={{ top: 12, right: 32, left: -12, bottom: 0 }}>
+              <CartesianGrid stroke={LINE} vertical={false} />
+              <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: INK }} interval="preserveStartEnd" minTickGap={24} />
+              <YAxis allowDecimals={false} tick={AXIS_TICK} tickLine={false} axisLine={false} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: "rgba(22,20,15,0.05)" }} />
+              <Bar dataKey="count" fill={INK} radius={[3, 3, 0, 0]} maxBarSize={48} isAnimationActive={false} />
             </BarChart>
           )}
         </ResponsiveContainer>
       </div>
     );
-  },
-);
-
-export default EntryChart;
+}
