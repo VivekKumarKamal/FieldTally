@@ -1780,14 +1780,6 @@ function FormEditorContent() {
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-zinc-50 border border-zinc-200 text-zinc-600 text-xs font-medium">
                   <Award size={13} className="text-amber-500" />
                   {quizSummary.totalPoints} {quizSummary.totalPoints === 1 ? "point" : "points"}
-                <span className="text-xs text-zinc-500">
-                  <strong className="font-semibold text-zinc-700">{quizSummary.totalQuestions}</strong>
-                  {quizSummary.totalQuestions === 1 ? " question" : " questions"}
-                  <span className="text-zinc-300"> · </span>
-                  <strong className="font-semibold text-zinc-700">{quizSummary.gradedQuestions}</strong> graded
-                  <span className="text-zinc-300"> · </span>
-                  <strong className="font-semibold text-zinc-700">{quizSummary.totalPoints}</strong>
-                  {quizSummary.totalPoints === 1 ? " point" : " points"} total
                 </span>
                 {quizSummary.gradedQuestions === 0 && (
                   <span className="text-xs text-amber-600">

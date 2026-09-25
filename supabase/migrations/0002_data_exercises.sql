@@ -33,6 +33,13 @@ create index if not exists forms_created_by_kind_idx
 -- Owner-less (created_by = null) so it can never be edited/deleted through the
 -- app (forms_update/forms_delete require is_form_owner, which is never true
 -- for a null created_by). Only runnable via SQL editor / service role.
+--
+-- form_versions.created_by is NOT NULL on this database (stricter than the
+-- nullable type in packages/database/src/types.ts, which was reconstructed
+-- from application behavior rather than the real schema). Relax it here so a
+-- system-seeded, owner-less template can have a version row at all.
+alter table public.form_versions
+  alter column created_by drop not null;
 
 insert into public.forms (id, kind, draft_schema, status, access_open, created_by)
 values (

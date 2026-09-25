@@ -986,6 +986,8 @@ body {
   display: inline-flex;
   align-items: center;
   margin-left: 6px;
+}
+
 /* Per-question mark allocation, from the quizAnswerPicker decorations.
    Absolutely positioned so it never joins the title's inline flow — that is what
    pushed the required asterisk onto its own line. */

@@ -57,6 +57,8 @@ function buildDecorations(doc: ProseMirrorNode): DecorationSet {
           })
         );
       }
+    }
+
     // Points badge on any graded question, whether or not it has options.
     // Attached to the BLOCK, not the title: a widget inside the title makes
     // ProseMirror append a trailing <br> (the widget becomes the last inline
