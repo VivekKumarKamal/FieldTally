@@ -4,7 +4,7 @@ import type { ChartTypeId, Summary } from "@/lib/exerciseCharts";
 import CategoryChart from "./CategoryChart";
 import { BinHistogram, CumulativeChart, DotStack } from "./BinCharts";
 import { BoxPlot, NumberLine, NumberSummary } from "./NumberCharts";
-import { AnswerWall, TopWords, WordCloud } from "./TextCharts";
+import { AnswerCloud, AnswerWall, TopAnswers } from "./TextCharts";
 
 function Waiting({ label }: { label: string }) {
   return (
@@ -37,9 +37,9 @@ export default function ChartView({ summary, type }: { summary: Summary; type: C
       return <BinHistogram bins={summary.bins} />;
 
     case "text":
-      if (type === "words") return <TopWords words={summary.words} />;
+      if (type === "words") return <TopAnswers answers={summary.answers} />;
       if (type === "wall") return <AnswerWall texts={summary.texts} />;
-      return summary.words.length ? <WordCloud words={summary.words} /> : <AnswerWall texts={summary.texts} />;
+      return summary.answers.length ? <AnswerCloud answers={summary.answers} /> : <AnswerWall texts={summary.texts} />;
 
     case "time":
     case "date":

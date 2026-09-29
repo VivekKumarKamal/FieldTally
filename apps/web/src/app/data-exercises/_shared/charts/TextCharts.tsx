@@ -4,8 +4,8 @@ import { useMemo } from "react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, LabelList } from "recharts";
 import { useSize } from "./useSize";
 import { SANS, chartStyles, useExerciseTheme, type ExerciseTheme } from "../theme";
+import type { TextFrequency } from "@/lib/exerciseCharts";
 
-type Word = { word: string; count: number };
 
 let measureCtx: CanvasRenderingContext2D | null = null;
 function textWidth(text: string, size: number): number {
@@ -22,11 +22,11 @@ function middleOut<T>(items: T[]): T[] {
   return out;
 }
 
-type Placed = { word: string; size: number; x: number; y: number; color: string };
+type Placed = { value: string; size: number; x: number; y: number; color: string };
 
-/** Rows of words, biggest in the middle; shrinks the type until everything fits. */
-function layoutCloud(words: Word[], width: number, height: number, th: ExerciseTheme): Placed[] {
-  const top = words.slice(0, 40);
+/** Rows of answers, biggest in the middle; shrinks the type until everything fits. */
+function layoutCloud(answers: TextFrequency[], width: number, height: number, th: ExerciseTheme): Placed[] {
+  const top = answers.slice(0, 40);
   if (top.length === 0 || width === 0) return [];
   const maxC = top[0]!.count;
   const minC = top[top.length - 1]!.count;
@@ -44,7 +44,7 @@ function layoutCloud(words: Word[], width: number, height: number, th: ExerciseT
     let row: typeof sized = [];
     let rowW = 0;
     for (const w of sized) {
-      const ww = textWidth(w.word, w.size) + w.size * 0.5;
+      const ww = textWidth(w.value, w.size) + w.size * 0.5;
       if (row.length && rowW + ww > width * 0.94) {
         rows.push(row);
         row = [];
@@ -63,10 +63,10 @@ function layoutCloud(words: Word[], width: number, height: number, th: ExerciseT
     const placed: Placed[] = [];
     let y = (height - total) / 2;
     for (const r of ordered) {
-      const widths = r.words.map((w) => textWidth(w.word, w.size) + w.size * 0.5);
+      const widths = r.words.map((w) => textWidth(w.value, w.size) + w.size * 0.5);
       let x = (width - widths.reduce((a, b) => a + b, 0)) / 2;
       r.words.forEach((w, i) => {
-        placed.push({ word: w.word, size: w.size, color: w.color, x: x + widths[i]! / 2, y: y + r.h * 0.78 });
+        placed.push({ value: w.value, size: w.size, color: w.color, x: x + widths[i]! / 2, y: y + r.h * 0.78 });
         x += widths[i]!;
       });
       y += r.h;
@@ -76,17 +76,17 @@ function layoutCloud(words: Word[], width: number, height: number, th: ExerciseT
   return [];
 }
 
-export function WordCloud({ words }: { words: Word[] }) {
+export function AnswerCloud({ answers }: { answers: TextFrequency[] }) {
   const th = useExerciseTheme();
   const [ref, { width, height }] = useSize<HTMLDivElement>();
-  const placed = useMemo(() => layoutCloud(words, width, height, th), [words, width, height, th]);
+  const placed = useMemo(() => layoutCloud(answers, width, height, th), [answers, width, height, th]);
   return (
     <div ref={ref} className="h-full w-full">
       {width > 0 && (
-        <svg className="chart-surface" width={width} height={height} role="img" aria-label="Word cloud">
+        <svg className="chart-surface" width={width} height={height} role="img" aria-label="Answer cloud">
           {placed.map((p) => (
-            <text key={p.word} x={p.x} y={p.y} textAnchor="middle" fontSize={p.size} fontWeight={600} fill={p.color} fontFamily={SANS}>
-              {p.word}
+            <text key={p.value} x={p.x} y={p.y} textAnchor="middle" fontSize={p.size} fontWeight={600} fill={p.color} fontFamily={SANS}>
+              {p.value}
             </text>
           ))}
         </svg>
@@ -95,16 +95,16 @@ export function WordCloud({ words }: { words: Word[] }) {
   );
 }
 
-export function TopWords({ words }: { words: Word[] }) {
+export function TopAnswers({ answers }: { answers: TextFrequency[] }) {
   const th = useExerciseTheme();
   const s = chartStyles(th);
-  const data = words.slice(0, 10);
+  const data = answers.slice(0, 10);
   const max = Math.max(1, ...data.map((d) => d.count));
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} layout="vertical" margin={{ top: 8, right: 16, left: 4, bottom: 8 }} barCategoryGap="22%">
         <XAxis type="number" hide domain={[0, max * 1.2]} />
-        <YAxis type="category" dataKey="word" width={140} tick={s.categoryTick} tickLine={false} axisLine={{ stroke: th.ink }} />
+        <YAxis type="category" dataKey="value" width={140} tick={s.categoryTick} tickLine={false} axisLine={{ stroke: th.ink }} />
         <Tooltip contentStyle={s.tooltip} cursor={{ fill: s.cursorFill }} />
         <Bar dataKey="count" fill={th.accent} radius={[0, 4, 4, 0]} maxBarSize={44} isAnimationActive={false}>
           <LabelList dataKey="count" position="right" style={s.dataLabel} />

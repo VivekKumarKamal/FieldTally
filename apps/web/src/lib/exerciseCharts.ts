@@ -35,8 +35,8 @@ export const CHART_LABELS: Record<ChartTypeId, string> = {
   box: "Box plot",
   line: "Line",
   summary: "Summary",
-  cloud: "Word cloud",
-  words: "Top words",
+  cloud: "Answer cloud",
+  words: "Top answers",
   wall: "Answers",
   timeline: "Timeline",
   cumulative: "Running total",
@@ -355,25 +355,29 @@ export function arrivalBins(timestamps: number[]): { bins: Bin[]; stepMinutes: n
   return { bins, stepMinutes: step };
 }
 
-const STOPWORDS = new Set(
-  (
-    "a an and are as at be but by for from has have he her his i in is it its me my of on or our she so that the " +
-    "their them they this to too very was we were what when which who will with you your im its not no yes do did " +
-    "just really about all am been can could if into more than then there these those us would should"
-  ).split(" "),
-);
+export interface TextFrequency {
+  /** The response exactly as entered, except for whitespace at its edges. */
+  value: string;
+  count: number;
+}
 
-export function wordFrequencies(texts: string[]): { word: string; count: number }[] {
-  const freq = new Map<string, number>();
-  for (const t of texts) {
-    for (const raw of t.toLowerCase().replace(/[’']/g, "").split(/[^\p{L}\p{N}]+/u)) {
-      if (raw.length < 2 || STOPWORDS.has(raw)) continue;
-      freq.set(raw, (freq.get(raw) || 0) + 1);
-    }
+/**
+ * Counts complete written responses, not the words inside them. A response such
+ * as "My Love" must remain one answer in the cloud and top-answer chart.
+ * Whitespace and letter case are normalized only for matching duplicate values;
+ * the first version entered is kept as the label shown to the facilitator.
+ */
+export function textFrequencies(texts: string[]): TextFrequency[] {
+  const freq = new Map<string, TextFrequency>();
+  for (const text of texts) {
+    const value = text.trim().replace(/\s+/g, " ");
+    if (!value) continue;
+    const key = value.toLocaleLowerCase();
+    const current = freq.get(key);
+    if (current) current.count++;
+    else freq.set(key, { value, count: 1 });
   }
-  return [...freq.entries()]
-    .map(([word, count]) => ({ word, count }))
-    .sort((a, b) => b.count - a.count || a.word.localeCompare(b.word));
+  return [...freq.values()].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
 }
 
 // ── Summaries: everything a question panel needs, computed once ──
@@ -381,7 +385,7 @@ export function wordFrequencies(texts: string[]): { word: string; count: number 
 export type Summary =
   | { kind: "single" | "multi"; answered: number; takeaway: string; agg: CategoryAgg }
   | { kind: "number"; answered: number; takeaway: string; values: number[]; bins: Bin[]; stats: NumberStats | null }
-  | { kind: "text"; answered: number; takeaway: string; texts: string[]; words: { word: string; count: number }[] }
+  | { kind: "text"; answered: number; takeaway: string; texts: string[]; answers: TextFrequency[] }
   | { kind: "time" | "date"; answered: number; takeaway: string; bins: Bin[] }
   | { kind: "arrival"; answered: number; takeaway: string; bins: Bin[]; timestamps: number[]; stepMinutes: number };
 
@@ -406,14 +410,14 @@ export function numberTakeaway(stats: NumberStats | null): string {
   return `Average ${one(stats.mean)} · middle value ${one(stats.median)} · from ${one(stats.min)} to ${one(stats.max)}`;
 }
 
-export function wordsTakeaway(words: { word: string; count: number }[]): string {
-  if (words.length === 0) return "";
-  const top = words[0]!;
-  if (top.count === 1) return `${words.length} different words so far`;
-  const tied = words.filter((w) => w.count === top.count).map((w) => `"${w.word}"`);
+export function textTakeaway(answers: TextFrequency[]): string {
+  if (answers.length === 0) return "";
+  const top = answers[0]!;
+  if (top.count === 1) return `${answers.length} different answers so far`;
+  const tied = answers.filter((answer) => answer.count === top.count).map((answer) => `"${answer.value}"`);
   return tied.length > 1
-    ? `Most used words: ${joinNames(tied)} (${top.count} times each)`
-    : `Most used word: ${tied[0]} (${top.count} times)`;
+    ? `Most common answers: ${joinNames(tied)} (${top.count} times each)`
+    : `Most common answer: ${tied[0]} (${top.count} times)`;
 }
 
 export function binTakeaway(bins: Bin[], what: string, unit?: string): string {
@@ -446,8 +450,8 @@ export function summarize(kind: DataKind, field: ExerciseField | null, entries: 
     }
     case "text": {
       const texts = textValues(entries, field.id);
-      const words = wordFrequencies(texts);
-      return { kind, answered: texts.length, texts, words, takeaway: wordsTakeaway(words) };
+      const answers = textFrequencies(texts);
+      return { kind, answered: texts.length, texts, answers, takeaway: textTakeaway(answers) };
     }
     case "time": {
       const mins = entries.map((e) => parseTime(e.data[field.id])).filter((v): v is number => v !== null);

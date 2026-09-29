@@ -15,8 +15,8 @@ import {
   timeBins,
   dateBins,
   arrivalBins,
-  wordFrequencies,
-  wordsTakeaway,
+  textFrequencies,
+  textTakeaway,
   resolveChartType,
   chartOptionsFor,
   summarize,
@@ -87,11 +87,14 @@ check("arrivals: per minute, empty minutes kept", [arr.stepMinutes, arr.bins.map
 check("arrivals: 5-minute steps for a long session", arrivalBins([t0, t0 + 90 * 60_000]).stepMinutes, 5);
 check("arrival takeaway", summarize("arrival", null, [e({}, t0), e({}, t0 + 1000)]).takeaway.startsWith("Busiest minute:"), true);
 
-// ── Words ──
-const words = wordFrequencies(["I am so happy!", "Happy and tired", "TIRED, happy"]);
-check("words: lowercased, punctuation + stopwords removed", words, [{ word: "happy", count: 3 }, { word: "tired", count: 2 }]);
-check("words takeaway", wordsTakeaway(words), 'Most used word: "happy" (3 times)');
-check("words: all unique", wordsTakeaway(wordFrequencies(["red", "blue"])), "2 different words so far");
+// ── Written answers ──
+const answers = textFrequencies(["My Love", "my love", "  Hello   world  "]);
+check("answers: whole entries are kept together and duplicate matching is case-insensitive", answers, [
+  { value: "My Love", count: 2 },
+  { value: "Hello world", count: 1 },
+]);
+check("answers takeaway", textTakeaway(answers), 'Most common answer: "My Love" (2 times)');
+check("answers: all unique", textTakeaway(textFrequencies(["red", "blue"])), "2 different answers so far");
 
 // ── Chart catalog ──
 check("no pie for multi-select", chartOptionsFor("multi").includes("pie"), false);

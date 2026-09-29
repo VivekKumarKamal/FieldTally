@@ -106,6 +106,7 @@ function RunnerPageInner() {
   const [leftWidth, setLeftWidth] = useState<number | null>(null);
   const [pops, setPops] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [finishing, setFinishing] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLElement>(null);
 
@@ -267,14 +268,22 @@ function RunnerPageInner() {
   }, [oneTap]);
 
   async function handleFinish() {
+    if (finishing) return;
     if (!confirm("Finish the exercise? No more entries can be logged after this.")) return;
-    setStatus("finished");
-    setChartHidden(false);
     if (isLocal) {
       persistLocalBundle({ status: "finished" });
+      setStatus("finished");
+      setChartHidden(false);
     } else {
+      setFinishing(true);
       const result = await finishExerciseInstance(runId);
-      if (!result.ok) alert(result.error || "Failed to finish exercise.");
+      setFinishing(false);
+      if (!result.ok) {
+        alert(result.error || "Failed to finish exercise.");
+        return;
+      }
+      setStatus("finished");
+      setChartHidden(false);
     }
   }
 
@@ -430,7 +439,14 @@ function RunnerPageInner() {
 
         <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
           {status === "live" ? (
-            <BarButton icon={Flag} label="Finish" longLabel="Finish exercise" onClick={handleFinish} strong />
+            <BarButton
+              icon={Flag}
+              label={finishing ? "Finishing…" : "Finish"}
+              longLabel={finishing ? "Finishing exercise…" : "Finish exercise"}
+              onClick={handleFinish}
+              disabled={finishing}
+              strong
+            />
           ) : (
             <>
               <BarButton
@@ -601,6 +617,7 @@ function BarButton({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
       title={tip ?? longLabel}
