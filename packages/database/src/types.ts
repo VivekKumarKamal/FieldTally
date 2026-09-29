@@ -188,7 +188,12 @@ export interface Database {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      delete_owned_form: {
+        Args: {
+          target_form_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never

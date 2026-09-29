@@ -240,7 +240,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ fo
   }
 }
 
-/** DELETE /api/forms/:formId — owner only. Removes versions, members, then the form. */
+/** DELETE /api/forms/:formId — owner only. Deletes the form and its records atomically. */
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ formId: string }> }) {
   try {
     const { formId } = await params;
@@ -251,13 +251,11 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ f
     if (!form) return notFound(error || "Form not found");
     if (!canManageForm(form, role)) return forbidden("Only the form owner can delete it.");
 
-    // Children first — the schema has no cascade guarantee we can rely on here.
-    await supabase.from("submissions").delete().eq("form_id", formId);
-    await supabase.from("form_versions").delete().eq("form_id", formId);
-    await supabase.from("form_members").delete().eq("form_id", formId);
-
-    const { error: deleteErr } = await supabase.from("forms").delete().eq("id", formId);
+    const { data: deleted, error: deleteErr } = await supabase.rpc("delete_owned_form", {
+      target_form_id: formId,
+    });
     if (deleteErr) return serverError("/api/forms/[formId] DELETE", deleteErr);
+    if (!deleted) return notFound("Form not found");
 
     return NextResponse.json({ ok: true });
   } catch (err) {
