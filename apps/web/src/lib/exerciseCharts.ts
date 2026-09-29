@@ -45,8 +45,8 @@ export const CHART_LABELS: Record<ChartTypeId, string> = {
 // First entry is the default. Pie/donut/waffle only for single choice: with
 // multi-select the shares add up to more than 100%, so a pie would mislead.
 const OPTIONS: Record<DataKind, ChartTypeId[]> = {
-  single: ["bar", "column", "pie", "donut", "waffle", "table"],
-  multi: ["bar", "column", "table"],
+  single: ["bar", "column", "line", "pie", "donut", "waffle", "table"],
+  multi: ["bar", "column", "line", "table"],
   number: ["histogram", "dots", "box", "line", "summary"],
   text: ["cloud", "words", "wall"],
   time: ["histogram", "timeline"],
@@ -86,8 +86,8 @@ const LEGACY: Partial<Record<DataKind, Record<string, ChartTypeId>>> = {
   text: { bar: "words", pie: "words", number: "wall", line: "wall" },
   time: { bar: "histogram", pie: "histogram", line: "timeline", number: "histogram" },
   date: { bar: "histogram", pie: "histogram", line: "timeline", number: "histogram" },
-  single: { line: "bar", number: "table" },
-  multi: { line: "bar", number: "table", pie: "bar" },
+  single: { number: "table" },
+  multi: { number: "table", pie: "bar" },
 };
 
 /** The chart to show for a question, or null if the author chose "Don't chart". */

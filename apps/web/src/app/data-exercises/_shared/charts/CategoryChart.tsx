@@ -1,6 +1,6 @@
 "use client";
 
-import { ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, LabelList } from "recharts";
+import { ResponsiveContainer, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, LabelList } from "recharts";
 import type { CategoryAgg, ChartTypeId } from "@/lib/exerciseCharts";
 import { useSize } from "./useSize";
 import { MONO, SANS, categoryColor, chartStyles, useExerciseTheme, type ExerciseTheme } from "../theme";
@@ -8,6 +8,84 @@ import { MONO, SANS, categoryColor, chartStyles, useExerciseTheme, type Exercise
 const short = (s: string, max = 16) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
 
 type Row = CategoryAgg["rows"][number] & { label: string; color: string };
+
+type CategoryAxisLayout = {
+  angle: 0 | -30 | -45 | -60;
+  height: number;
+};
+
+function categoryAxisLayout(labels: string[], chartWidth: number): CategoryAxisLayout {
+  const slotWidth = Math.max(24, (chartWidth - 32) / Math.max(labels.length, 1));
+  const widestLabel = Math.max(1, ...labels.map((label) => short(label, 14).length * 8.5));
+  const ratio = widestLabel / slotWidth;
+
+  if (ratio <= 1) return { angle: 0, height: 30 };
+  if (ratio <= 1.35) return { angle: -30, height: 64 };
+  if (ratio <= 1.8) return { angle: -45, height: 82 };
+  return { angle: -60, height: 104 };
+}
+
+function CategoryXAxis({ data, layout, t, tick }: { data: Row[]; layout: CategoryAxisLayout; t: ExerciseTheme; tick: ReturnType<typeof chartStyles>["categoryTick"] }) {
+  return (
+    <XAxis
+      dataKey="name"
+      tick={tick}
+      tickFormatter={(value) => short(String(value), 14)}
+      tickLine={false}
+      axisLine={{ stroke: t.ink }}
+      interval={0}
+      angle={layout.angle}
+      textAnchor={layout.angle ? "end" : "middle"}
+      tickMargin={layout.angle ? 10 : 8}
+      height={layout.height}
+    />
+  );
+}
+
+function CategoryCartesianChart({ data, maxCount, type, t }: { data: Row[]; maxCount: number; type: "column" | "line"; t: ExerciseTheme }) {
+  const s = chartStyles(t);
+  const [ref, { width }] = useSize<HTMLDivElement>();
+  const layout = categoryAxisLayout(data.map((row) => row.name), width);
+
+  return (
+    <div ref={ref} className="h-full w-full">
+      {width > 0 && (
+        <ResponsiveContainer width="100%" height="100%">
+          {type === "column" ? (
+            <BarChart data={data} margin={{ top: 32, right: 16, left: 16, bottom: 4 }}>
+              <CartesianGrid stroke={t.line} vertical={false} />
+              <CategoryXAxis data={data} layout={layout} t={t} tick={s.categoryTick} />
+              <YAxis hide domain={[0, maxCount * 1.12]} />
+              <Tooltip contentStyle={s.tooltip} labelStyle={s.tooltipLabel} cursor={{ fill: s.cursorFill }} />
+              <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={96} isAnimationActive={false}>
+                {data.map((row) => <Cell key={row.name} fill={row.color} />)}
+                <LabelList dataKey="label" position="top" style={s.dataLabel} />
+              </Bar>
+            </BarChart>
+          ) : (
+            <LineChart data={data} margin={{ top: 32, right: 16, left: 16, bottom: 4 }}>
+              <CartesianGrid stroke={t.line} vertical={false} />
+              <CategoryXAxis data={data} layout={layout} t={t} tick={s.categoryTick} />
+              <YAxis hide domain={[0, maxCount * 1.12]} />
+              <Tooltip contentStyle={s.tooltip} labelStyle={s.tooltipLabel} cursor={{ stroke: t.ink, strokeDasharray: "3 3" }} />
+              <Line
+                type="monotone"
+                dataKey="count"
+                stroke={t.accent}
+                strokeWidth={3}
+                dot={{ r: 5, fill: t.accent, stroke: t.surface, strokeWidth: 2 }}
+                activeDot={{ r: 7 }}
+                isAnimationActive={false}
+              >
+                <LabelList dataKey="label" position="top" style={s.dataLabel} />
+              </Line>
+            </LineChart>
+          )}
+        </ResponsiveContainer>
+      )}
+    </div>
+  );
+}
 
 /** 10×10 squares, one per percent; pctShown already sums to exactly 100 for single choice. */
 function Waffle({ rows, t }: { rows: Row[]; t: ExerciseTheme }) {
@@ -163,24 +241,7 @@ export default function CategoryChart({ agg, type }: { agg: CategoryAgg; type: C
     return <PieOrDonut rows={data.filter((d) => d.count > 0)} answered={agg.answered} donut={type === "donut"} t={t} />;
   }
 
-  if (type === "column") {
-    return (
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 32, right: 16, left: 16, bottom: 4 }}>
-          <CartesianGrid stroke={t.line} vertical={false} />
-          <XAxis dataKey="name" tick={s.categoryTick} tickFormatter={(v) => short(v, 14)} tickLine={false} axisLine={{ stroke: t.ink }} interval={0} />
-          <YAxis hide domain={[0, maxCount * 1.12]} />
-          <Tooltip contentStyle={s.tooltip} labelStyle={s.tooltipLabel} cursor={{ fill: s.cursorFill }} />
-          <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={96} isAnimationActive={false}>
-            {data.map((d) => (
-              <Cell key={d.name} fill={d.color} />
-            ))}
-            <LabelList dataKey="label" position="top" style={s.dataLabel} />
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-    );
-  }
+  if (type === "column" || type === "line") return <CategoryCartesianChart data={data} maxCount={maxCount} type={type} t={t} />;
 
   // Horizontal bars (default): long answer labels stay readable.
   const labelWidth = Math.min(260, Math.max(80, Math.max(...data.map((d) => Math.min(d.name.length, 26))) * 9.5 + 12));
